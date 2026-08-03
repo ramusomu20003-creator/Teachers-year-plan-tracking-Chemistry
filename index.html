@@ -37,7 +37,7 @@
                     </div>
                     <div class="inline-block mt-2.5 px-4 py-1 bg-gradient-to-r from-indigo-50 to-blue-50 rounded-full border border-indigo-100 shadow-sm">
                         <p class="text-xs text-indigo-700 font-extrabold uppercase tracking-widest">
-                            Teachers Year Plan Tracker
+                            Teachers year Plan Tracker
                         </p>
                     </div>
                 </div>
@@ -102,7 +102,7 @@
                 
                 <div>
                     <h4 class="font-bold text-slate-800 mb-1 text-lg">Workload Assignments</h4>
-                    <p class="text-xs text-slate-500 mb-4">Select the operational block, subject, and assign target grade sections. You can also auto-generate the preset syllabus directly into MongoDB.</p>
+                    <p class="text-xs text-slate-500 mb-4">Select the operational block, subject, and assign target grade sections. You can also auto-generate the preset syllabus directly into the database.</p>
                     
                     <div id="assignments-container" class="space-y-4"></div>
                     
@@ -116,7 +116,7 @@
                     <button type="button" onclick="resetRegistrationForm()" class="px-8 bg-rose-400 text-white py-4 rounded-xl hover:bg-rose-500 font-extrabold text-lg shadow-lg transition flex items-center justify-center gap-2">🧹 Clear Form</button>
                 </div>
             </form>
-            <div id="registerMsg" class="mt-4 text-center font-bold text-emerald-700 hidden bg-emerald-50 p-3 rounded-xl border border-emerald-200 shadow-sm">Teacher profile saved successfully to MongoDB!</div>
+            <div id="registerMsg" class="mt-4 text-center font-bold text-emerald-700 hidden bg-emerald-50 p-3 rounded-xl border border-emerald-200 shadow-sm">Teacher profile configured successfully!</div>
         </div>
 
         <!-- TAB 2: DASHBOARD TRACKING -->
@@ -208,15 +208,13 @@
             </div>
             
             <div class="bg-purple-50 p-4 rounded-xl border border-purple-100 mb-6 text-sm text-purple-800 font-medium">
-                <strong>Instructions:</strong> Select cluster details to modify row parameters and save updates directly to MongoDB Atlas.
+                <strong>Instructions:</strong> Select cluster details to modify row parameters and save updates to local storage.
             </div>
             <div class="space-y-6 bg-slate-50/50 p-6 rounded-2xl border border-slate-200 shadow-sm">
                 <div class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
                     <div>
                         <label class="block font-bold mb-2 text-slate-700 text-sm">Select Teacher</label>
-                        <select id="editTeacherSelect" onchange="populateEditBlocks()" class="w-full border border-slate-300 p-3 rounded-xl focus:ring-2 focus:ring-purple-500 bg-white shadow-sm transition font-semibold text-sm">
-                            <option value="" disabled selected>-- Choose a Teacher --</option>
-                        </select>
+                        <select id="editTeacherSelect" onchange="populateEditBlocks()" class="w-full border border-slate-300 p-3 rounded-xl focus:ring-2 focus:ring-purple-500 bg-white shadow-sm transition font-semibold text-sm"></select>
                     </div>
                     <div>
                         <label class="block font-bold mb-2 text-slate-700 text-sm">Select Block</label>
@@ -284,10 +282,12 @@
     </div>
 
     <script>
-        const API_BASE = '/api/teachers';
-        let globalTeachersCache = [];
+        const STORAGE_KEY = 'montessoriMasterDB_V5'; 
 
         const USER_CREDENTIALS = {
+            "dash_user": { pass: "dash123", tabs: ["dashboard"] },
+            "edit_user": { pass: "edit123", tabs: ["register", "teacherEdit"] },
+            "upload_user": { pass: "upload123", tabs: ["manageTeachers"] },
             "admin_user": { pass: "admin123", tabs: ["register", "teacherEdit", "manageTeachers", "dashboard"] }
         };
 
@@ -381,41 +381,7 @@
             }
         };
 
-        async function fetchAllTeachersFromDB() {
-            try {
-                const res = await fetch(API_BASE);
-                if (res.ok) {
-                    const data = await res.json();
-                    console.log("Database Response Data:", data);
-                    globalTeachersCache = data.map(t => {
-                        const teacherName = t.name || t.Name || t.teacherName || t.teacher || t.title || "Unnamed Teacher";
-                        return {
-                            ...t,
-                            name: teacherName,
-                            assignments: (t.assignments || t.Workloads || t.workloads || []).map(a => ({
-                                block: a.block || a.Block,
-                                subject: a.subject || a.Subject,
-                                classes: a.classes || a.Classes || []
-                            })),
-                            plan: (t.plan || t.Plan || []).map(p => ({
-                                ...p,
-                                Block: p.Block || p.block,
-                                Subject: p.Subject || p.subject,
-                                Class: p.Class || p.class
-                            }))
-                        };
-                    });
-                } else {
-                    console.error("Server response error:", res.statusText);
-                }
-            } catch (err) {
-                console.error("Failed to connect to backend server:", err);
-            }
-            return globalTeachersCache;
-        }
-
-        async function initApp() {
-            await fetchAllTeachersFromDB();
+        function initApp() {
             const savedSession = sessionStorage.getItem('portal_user');
             if (savedSession && USER_CREDENTIALS[savedSession]) {
                 applyPortalPermissions(savedSession);
@@ -470,7 +436,7 @@
             switchTab(allowedTabs[0]);
         }
 
-        async function switchTab(tab) {
+        function switchTab(tab) {
             document.getElementById('register-section').style.display = 'none';
             document.getElementById('dashboard-section').style.display = 'none';
             document.getElementById('teacherEdit-section').style.display = 'none';
@@ -489,21 +455,11 @@
             const activeBtn = document.getElementById(`btn-${tab}`);
             if (activeBtn) activeBtn.className = TAB_STYLES[tab].active;
 
-            await fetchAllTeachersFromDB();
-            
-            if (tab === 'register') {
-                resetRegistrationForm();
-            }
-            if (tab === 'dashboard') {
-                populateTeacherDropdowns(true);
-                populateDashboardBlocks();
-            }
-            if (tab === 'teacherEdit') {
-                await populateEditTeacherDropdown();
-            }
-            if (tab === 'manageTeachers') {
-                renderTeachersManagement();
-            }
+            populateTeacherDropdowns(true);
+            if (tab === 'register') resetRegistrationForm();
+            if (tab === 'dashboard') populateDashboardBlocks();
+            if (tab === 'teacherEdit') populateEditBlocks();
+            if (tab === 'manageTeachers') renderTeachersManagement();
         }
 
         function getSectionStyleClass(val) {
@@ -576,11 +532,22 @@
             submitBtn.className = "flex-grow bg-indigo-600 text-white py-4 rounded-xl hover:bg-indigo-700 font-extrabold text-xl shadow-lg transition";
         }
 
-        document.getElementById('registrationForm').addEventListener('submit', async function(e) {
+        document.getElementById('registrationForm').addEventListener('submit', function(e) {
             e.preventDefault();
             const name = document.getElementById('teacherName').value.trim();
             const assignmentRows = document.querySelectorAll('.assignment-row');
             let assignmentsArray = [];
+
+            let allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+            const isUpdateOperation = document.getElementById('regSubmitBtn').innerText.includes("Update Profile Matrix");
+
+            if (!isUpdateOperation) {
+                const nameExists = allTeachers.some(t => t.name.toLowerCase() === name.toLowerCase());
+                if (nameExists) {
+                    alert(`⚠️ A database entry for "${name}" already exists.`);
+                    return;
+                }
+            }
 
             assignmentRows.forEach(row => {
                 const block = row.querySelector('.t-block').value;
@@ -594,35 +561,21 @@
 
             if(assignmentsArray.length === 0) return alert("Please select at least one class for your assignments.");
             
-            await fetchAllTeachersFromDB();
-            const existingProfile = globalTeachersCache.find(t => t.name.toLowerCase() === name.toLowerCase());
+            const existingProfile = allTeachers.find(t => t.name.toLowerCase() === name.toLowerCase());
             const activePlans = existingProfile ? (existingProfile.plan || []) : [];
 
-            const payload = { name: name, assignments: assignmentsArray, plan: activePlans };
+            allTeachers = allTeachers.filter(t => t.name.toLowerCase() !== name.toLowerCase());
+            allTeachers.push({ name: name, assignments: assignmentsArray, plan: activePlans }); 
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(allTeachers));
 
-            try {
-                const response = await fetch(API_BASE, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-
-                if (response.ok) {
-                    document.getElementById('registerMsg').classList.remove('hidden');
-                    setTimeout(() => { document.getElementById('registerMsg').classList.add('hidden'); }, 3000);
-                    resetRegistrationForm();
-                    await fetchAllTeachersFromDB();
-                    populateTeacherDropdowns(true);
-                } else {
-                    const errText = await response.text();
-                    alert(`❌ Failed to save profile to database: ${errText}`);
-                }
-            } catch (err) {
-                alert(`❌ Network error connecting to backend: ${err.message}`);
-            }
+            document.getElementById('registerMsg').classList.remove('hidden');
+            setTimeout(() => { document.getElementById('registerMsg').classList.add('hidden'); }, 3000);
+            
+            resetRegistrationForm();
+            populateTeacherDropdowns(true);
         });
 
-        async function autoGenerateAndSavePlan(btnElement) {
+        function autoGenerateAndSavePlan(btnElement) {
             const teacherName = document.getElementById('teacherName').value.trim();
             if (!teacherName) return alert("Please enter the Teacher Name at the top first!");
 
@@ -635,16 +588,16 @@
             if (!subject) return alert("Please select a Subject!");
             if (selectedClasses.length === 0) return alert("Please select at least one Grade checkbox!");
 
-            await fetchAllTeachersFromDB();
-            let teacher = globalTeachersCache.find(t => t.name.toLowerCase() === teacherName.toLowerCase());
+            let allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+            let tIdx = allTeachers.findIndex(t => t.name.toLowerCase() === teacherName.toLowerCase());
 
-            if (teacher && teacher.plan && teacher.plan.length > 0) {
+            if (tIdx !== -1 && allTeachers[tIdx].plan && allTeachers[tIdx].plan.length > 0) {
                 const existingClasses = selectedClasses.filter(grade => 
-                    teacher.plan.some(p => (p.Block || p.block) === block && (p.Subject || p.subject) === subject && (p.Class || p.class) === grade)
+                    allTeachers[tIdx].plan.some(p => p.Block === block && p.Subject === subject && (p.Class || p.class) === grade)
                 );
 
                 if (existingClasses.length > 0) {
-                    alert(`⚠️ A year plan has ALREADY been generated for ${subject} (${existingClasses.join(', ')}) under Block "${block}"!`);
+                    alert(`⚠️ A year plan has ALREADY been generated for ${subject} (${existingClasses.join(', ')}) under Block "${block}"!\n\nAuto-generation is blocked to prevent overwriting your existing data. Use "Step 3: Update Year Plan" to make updates.`);
                     return;
                 }
             }
@@ -656,62 +609,103 @@
             const defaultMonths = ['JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER', 'JANUARY', 'FEBRUARY', 'MARCH'];
 
             selectedClasses.forEach(grade => {
+                // 1. ISAP / ISAP G & CHEMISTRY
                 if (isIsapBlock && isChemistry && ISAP_CHEMISTRY_PRESET[grade]) {
-                    ISAP_CHEMISTRY_PRESET[grade].forEach(pRow => {
-                        newPlanRows.push({ Block: block, Subject: subject, Class: grade, Month: pRow.Month, NCERT: pRow.NCERT, Assessments: pRow.Assessments, NEET: pRow.NEET, Sec1: pRow.Sec1 || "X", Sec2: pRow.Sec2 || "X", Sec3: pRow.Sec3 || "X", Sec4: pRow.Sec4 || "X", Sec5: pRow.Sec5 || "X", Sec6: pRow.Sec6 || "X", Status: pRow.Status });
+                    const presetRows = ISAP_CHEMISTRY_PRESET[grade];
+                    presetRows.forEach(pRow => {
+                        newPlanRows.push({
+                            Block: block,
+                            Subject: subject,
+                            Class: grade,
+                            Month: pRow.Month,
+                            NCERT: pRow.NCERT,
+                            Assessments: pRow.Assessments,
+                            NEET: pRow.NEET,
+                            Sec1: pRow.Sec1 || "X",
+                            Sec2: pRow.Sec2 || "X",
+                            Sec3: pRow.Sec3 || "X",
+                            Sec4: pRow.Sec4 || "X",
+                            Sec5: pRow.Sec5 || "X",
+                            Sec6: pRow.Sec6 || "X",
+                            Status: pRow.Status
+                        });
                     });
-                } else if (PRESET_SYLLABUS[subject] && PRESET_SYLLABUS[subject][grade]) {
-                    PRESET_SYLLABUS[subject][grade].forEach(pRow => {
-                        newPlanRows.push({ Block: block, Subject: subject, Class: grade, Month: pRow.Month, NCERT: pRow.NCERT, Assessments: pRow.Assessments, NEET: pRow.NEET, Sec1: pRow.Sec1 || "X", Sec2: pRow.Sec2 || "X", Sec3: pRow.Sec3 || "X", Sec4: pRow.Sec4 || "X", Sec5: pRow.Sec5 || "X", Sec6: pRow.Sec6 || "X", Status: pRow.Status });
+                }
+                // 2. STANDARD SUBJECT MATCH (including CHEMISTRY for non-ISAP blocks)
+                else if (PRESET_SYLLABUS[subject] && PRESET_SYLLABUS[subject][grade]) {
+                    const presetRows = PRESET_SYLLABUS[subject][grade];
+                    presetRows.forEach(pRow => {
+                        newPlanRows.push({
+                            Block: block,
+                            Subject: subject,
+                            Class: grade,
+                            Month: pRow.Month,
+                            NCERT: pRow.NCERT,
+                            Assessments: pRow.Assessments,
+                            NEET: pRow.NEET,
+                            Sec1: pRow.Sec1 || "X",
+                            Sec2: pRow.Sec2 || "X",
+                            Sec3: pRow.Sec3 || "X",
+                            Sec4: pRow.Sec4 || "X",
+                            Sec5: pRow.Sec5 || "X",
+                            Sec6: pRow.Sec6 || "X",
+                            Status: pRow.Status
+                        });
                     });
-                } else {
+                } 
+                // 3. FALLBACK DEFAULT MONTHS
+                else {
                     defaultMonths.forEach(month => {
-                        newPlanRows.push({ Block: block, Subject: subject, Class: grade, Month: month, NCERT: "", Assessments: "", NEET: (grade === 'Grade 9' || grade === 'Grade 10') ? "NEET Topic" : "N/A", Sec1: "X", Sec2: "X", Sec3: "X", Sec4: "X", Sec5: "X", Sec6: "X", Status: "NOT STARTED" });
+                        newPlanRows.push({
+                            Block: block,
+                            Subject: subject,
+                            Class: grade,
+                            Month: month,
+                            NCERT: "",
+                            Assessments: "",
+                            NEET: (grade === 'Grade 9' || grade === 'Grade 10') ? "NEET Topic" : "N/A",
+                            Sec1: "X",
+                            Sec2: "X",
+                            Sec3: "X",
+                            Sec4: "X",
+                            Sec5: "X",
+                            Sec6: "X",
+                            Status: "NOT STARTED"
+                        });
                     });
                 }
             });
 
-            let updatedAssignments = teacher ? [...(teacher.assignments || [])] : [];
-            const assignExists = updatedAssignments.some(a => (a.block || a.Block) === block && (a.subject || a.Subject) === subject);
-            if (!assignExists) {
-                updatedAssignments.push({ block: block, subject: subject, classes: selectedClasses });
-            }
-
-            let updatedPlan = teacher ? [...(teacher.plan || []), ...newPlanRows] : newPlanRows;
-
-            const payload = { name: teacherName, assignments: updatedAssignments, plan: updatedPlan };
-
-            try {
-                const response = await fetch(API_BASE, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-
-                if (response.ok) {
-                    await fetchAllTeachersFromDB();
-                    populateTeacherDropdowns(true);
-                    alert(`✅ Preset File Plan for ${subject} attached successfully to database!`);
-                } else {
-                    const errText = await response.text();
-                    alert(`❌ Failed to save auto-generated plan: ${errText}`);
+            if (tIdx === -1) {
+                const assignmentData = [{ block: block, subject: subject, classes: selectedClasses }];
+                allTeachers.push({ name: teacherName, assignments: assignmentData, plan: newPlanRows });
+            } else {
+                allTeachers[tIdx].plan = allTeachers[tIdx].plan || [];
+                allTeachers[tIdx].plan.push(...newPlanRows);
+                
+                const assignExists = allTeachers[tIdx].assignments.some(a => a.block === block && a.subject === subject);
+                if (!assignExists) {
+                    allTeachers[tIdx].assignments.push({ block: block, subject: subject, classes: selectedClasses });
                 }
-            } catch (err) {
-                alert(`❌ Network connection error: ${err.message}`);
             }
+
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(allTeachers));
+            populateTeacherDropdowns(true);
+
+            alert(`✅ Preset File Plan for ${subject} (${selectedClasses.join(', ')}) attached successfully to ${teacherName}'s profile!`);
         }
 
-        async function renderTeachersManagement() {
+        function renderTeachersManagement() {
             const listDiv = document.getElementById('teachersManagementList');
             if(!listDiv) return;
             
-            await fetchAllTeachersFromDB();
-            if(globalTeachersCache.length === 0) {
+            const allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+            if(allTeachers.length === 0) {
                 listDiv.innerHTML = '<div class="col-span-full text-center py-6 bg-slate-50 border border-dashed rounded-xl font-medium text-slate-400 text-sm">No teacher profiles available inside database records.</div>';
                 return;
             }
 
-            listDiv.innerHTML = globalTeachersCache.sort((a, b) => a.name.localeCompare(b.name)).map(t => {
+            listDiv.innerHTML = allTeachers.sort((a, b) => a.name.localeCompare(b.name)).map(t => {
                 const totalWorkloads = t.assignments ? t.assignments.length : 0;
                 const totalPlans = t.plan ? t.plan.length : 0;
                 const safeName = t.name.replace(/'/g, "\\'");
@@ -734,9 +728,9 @@
             }).join('');
         }
 
-        async function loadTeacherToEdit(name) {
-            await fetchAllTeachersFromDB();
-            const teacher = globalTeachersCache.find(t => t.name === name);
+        function loadTeacherToEdit(name) {
+            const allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+            const teacher = allTeachers.find(t => t.name === name);
             if(!teacher) return;
 
             switchTab('register');
@@ -747,7 +741,7 @@
 
             if (teacher.assignments && teacher.assignments.length > 0) {
                 teacher.assignments.forEach(assign => {
-                    addAssignmentRow(assign.block || assign.Block, assign.subject || assign.Subject, assign.classes || assign.Classes || []);
+                    addAssignmentRow(assign.block, assign.subject, assign.classes);
                 });
             } else {
                 addAssignmentRow();
@@ -760,71 +754,88 @@
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
-        async function deleteTeacherProfile(name) {
+        function deleteTeacherProfile(name) {
             if(!confirm(`Are you sure you want to permanently delete ${name}?`)) return;
 
-            const response = await fetch(`${API_BASE}?name=${encodeURIComponent(name)}`, { method: 'DELETE' });
-            if (response.ok) {
-                await renderTeachersManagement();
-                resetRegistrationForm();
-            } else {
-                alert("❌ Failed to delete teacher profile from database.");
-            }
+            let allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+            allTeachers = allTeachers.filter(t => t.name !== name);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(allTeachers));
+
+            renderTeachersManagement();
+            populateTeacherDropdowns(true);
+            resetRegistrationForm();
         }
 
-        async function populateTeacherDropdowns(resetToDefault = false) {
-            await fetchAllTeachersFromDB();
+        function removeAllTeacherYearPlansAcrossAllBlocks() {
+            const selectedName = document.getElementById('dashboardTeacherSelect').value;
+            if (!selectedName) return alert("Please select a teacher first!");
+
+            if (!confirm(`Are you sure you want to remove ALL year plans across all blocks and grades for ${selectedName}?`)) return;
+
+            let allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+            let teacher = allTeachers.find(t => t.name === selectedName);
+            if (!teacher) return;
+
+            teacher.plan = [];
+            teacher.assignments = [];
+
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(allTeachers));
+            populateDashboardBlocks();
+            alert("🗑️ All year plans removed successfully across all blocks.");
+        }
+
+        function populateTeacherDropdowns(resetToDefault = false) {
+            const allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+            
             const dashSelect = document.getElementById('dashboardTeacherSelect');
-            const sortedTeachers = [...globalTeachersCache].sort((a, b) => a.name.localeCompare(b.name));
+            const editSelect = document.getElementById('editTeacherSelect');
+
+            const teachersWithPlans = allTeachers
+                .filter(t => t.plan && t.plan.length > 0)
+                .sort((a, b) => a.name.localeCompare(b.name));
 
             let optionsHTML = '<option value="" disabled selected>-- Choose a Teacher --</option>';
-            sortedTeachers.forEach(t => {
+            teachersWithPlans.forEach(t => {
                 optionsHTML += `<option value="${t.name}">${t.name}</option>`;
             });
 
             if (dashSelect) {
                 const currentDash = dashSelect.value;
                 dashSelect.innerHTML = optionsHTML;
-                if (!resetToDefault && currentDash && sortedTeachers.find(t => t.name === currentDash)) {
+                if (!resetToDefault && currentDash && teachersWithPlans.find(t => t.name === currentDash)) {
                     dashSelect.value = currentDash;
                 } else {
                     dashSelect.value = "";
                 }
             }
+
+            if (editSelect) {
+                const currentEdit = editSelect.value;
+                editSelect.innerHTML = optionsHTML;
+                if (!resetToDefault && currentEdit && teachersWithPlans.find(t => t.name === currentEdit)) {
+                    editSelect.value = currentEdit;
+                } else {
+                    editSelect.value = "";
+                }
+            }
         }
 
-        async function populateEditTeacherDropdown() {
-            await fetchAllTeachersFromDB();
-            const editSelect = document.getElementById('editTeacherSelect');
-            if (!editSelect) return;
-
-            const sortedTeachers = [...globalTeachersCache].sort((a, b) => a.name.localeCompare(b.name));
-            let optionsHTML = '<option value="" disabled selected>-- Choose a Teacher --</option>';
-            sortedTeachers.forEach(t => {
-                optionsHTML += `<option value="${t.name}">${t.name}</option>`;
-            });
-            editSelect.innerHTML = optionsHTML;
-            document.getElementById('existingPlanContainer').style.display = 'none';
-            document.getElementById('noEditDataMsg').style.display = 'none';
-        }
-
-        async function populateDashboardBlocks() {
+        function populateDashboardBlocks() {
             const selectedName = document.getElementById('dashboardTeacherSelect').value;
             const blockSelect = document.getElementById('dashboardBlockSelect');
             const gradeSelect = document.getElementById('dashboardGradeSelect');
-            
-            await fetchAllTeachersFromDB();
-            const teacher = globalTeachersCache.find(t => t.name === selectedName);
+            const allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+            const teacher = allTeachers.find(t => t.name === selectedName);
 
             blockSelect.innerHTML = '<option value="All">All Blocks</option>';
             gradeSelect.innerHTML = '<option value="All">All Grades</option>';
 
             if (teacher) {
                 if (teacher.assignments) {
-                    const blocks = [...new Set(teacher.assignments.map(a => a.block || a.Block))];
+                    const blocks = [...new Set(teacher.assignments.map(a => a.block))];
                     blocks.sort().forEach(blk => blockSelect.innerHTML += `<option value="${blk}">${blk}</option>`);
                 }
-                if (teacher.plan && teacher.plan.length > 0) {
+                if (teacher.plan) {
                     const grades = [...new Set(teacher.plan.map(p => p.Class || p.class).filter(Boolean))];
                     grades.sort().forEach(grd => gradeSelect.innerHTML += `<option value="${grd}">${grd}</option>`);
                 }
@@ -840,22 +851,24 @@
             const selectedBlock = document.getElementById('dashboardBlockSelect').value; 
             const selectedGrade = document.getElementById('dashboardGradeSelect').value;
             
-            const teacher = globalTeachersCache.find(t => t.name === selectedName);
+            const allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+            const teacher = allTeachers.find(t => t.name === selectedName);
+
             if (!teacher) return;
 
             document.getElementById('teacher-dashboard-content').style.display = 'block';
             document.getElementById('noDataMsg').style.display = 'none';
 
             let filteredAssignments = teacher.assignments || [];
-            if(selectedBlock !== "All") filteredAssignments = filteredAssignments.filter(a => (a.block || a.Block) === selectedBlock);
+            if(selectedBlock !== "All") filteredAssignments = filteredAssignments.filter(a => a.block === selectedBlock);
 
             const workloadDiv = document.getElementById('workloadDisplay');
             if (filteredAssignments.length > 0) {
                 workloadDiv.innerHTML = filteredAssignments.map(assign => `
                     <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-blue-600 flex flex-col border border-slate-100 hover:shadow-md transition">
-                        <span class="font-extrabold text-slate-800 text-lg">${assign.subject || assign.Subject}</span>
-                        <span class="text-xs text-blue-600 font-bold mb-1 tracking-wider uppercase">Block: ${assign.block || assign.Block}</span>
-                        <span class="text-xs font-semibold text-slate-500 bg-slate-50 p-1.5 rounded-md border border-slate-100 mt-1">${(assign.classes || assign.Classes || []).join(', ')}</span>
+                        <span class="font-extrabold text-slate-800 text-lg">${assign.subject}</span>
+                        <span class="text-xs text-blue-600 font-bold mb-1 tracking-wider uppercase">Block: ${assign.block}</span>
+                        <span class="text-xs font-semibold text-slate-500 bg-slate-50 p-1.5 rounded-md border border-slate-100 mt-1">${assign.classes.join(', ')}</span>
                     </div>
                 `).join('');
             } else {
@@ -869,7 +882,7 @@
             let allPlanData = (teacher.plan || []).map((lesson, idx) => ({ ...lesson, _originalIndex: idx }));
             let filteredPlan = allPlanData;
             
-            if(selectedBlock !== "All") filteredPlan = filteredPlan.filter(lesson => (lesson.Block || lesson.block) === selectedBlock);
+            if(selectedBlock !== "All") filteredPlan = filteredPlan.filter(lesson => lesson.Block === selectedBlock);
             if(selectedGrade !== "All") filteredPlan = filteredPlan.filter(lesson => (lesson.Class || lesson.class) === selectedGrade);
 
             if(filteredPlan.length === 0) {
@@ -882,6 +895,7 @@
 
             noPlanMsg.style.display = 'none';
             let pendingCount = 0, completedCount = 0;
+
             const safeTeacherName = teacher.name.replace(/'/g, "\\'");
 
             filteredPlan.forEach((lesson) => {
@@ -902,7 +916,7 @@
 
                     return `
                         <td class="py-2.5 px-2 min-w-[130px] border-r border-slate-200/40">
-                            <select onchange="updateInteractiveCell('${safeTeacherName}', ${lesson._originalIndex}, '${sec}', this.value)" class="p-1.5 border ${secStyleClass} rounded-lg w-full text-xs cursor-pointer shadow-sm">
+                            <select onchange="updateInteractiveCell('${safeTeacherName}', ${lesson._originalIndex}, '${sec}', this.value); this.className='p-1.5 border rounded-lg w-full text-xs cursor-pointer shadow-sm ' + getSectionStyleClass(this.value);" class="p-1.5 border ${secStyleClass} rounded-lg w-full text-xs cursor-pointer shadow-sm">
                                 <option value="X" ${secVal === 'X' ? 'selected' : ''}>X</option>
                                 <option value="NOT STARTED" ${secVal === 'NOT STARTED' ? 'selected' : ''}>NOT STARTED</option>
                                 <option value="IN PROGRESS" ${secVal === 'IN PROGRESS' ? 'selected' : ''}>IN PROGRESS</option>
@@ -913,13 +927,13 @@
                 }).join('');
 
                 row.innerHTML = `
-                    <td class="py-4 px-5 font-bold text-indigo-950 bg-white/40 min-w-[100px] border-r border-slate-200/40">${lesson.Block || lesson.block || 'N/A'}</td>
-                    <td class="py-4 px-5 font-bold text-blue-900 bg-white/40 min-w-[120px] border-r border-slate-200/40">${lesson.Subject || lesson.subject || 'N/A'}</td>
+                    <td class="py-4 px-5 font-bold text-indigo-950 bg-white/40 min-w-[100px] border-r border-slate-200/40">${lesson.Block || 'N/A'}</td>
+                    <td class="py-4 px-5 font-bold text-blue-900 bg-white/40 min-w-[120px] border-r border-slate-200/40">${lesson.Subject || 'N/A'}</td>
                     <td class="py-4 px-5 font-black text-slate-700 min-w-[110px] border-r border-slate-200/40">${lesson.Class || lesson.class || 'N/A'}</td>
-                    <td class="py-4 px-5 font-semibold text-slate-600 min-w-[100px] border-r border-slate-200/40">${lesson.Month || lesson.month || ''}</td>
-                    <td class="py-4 px-6 text-slate-900 font-semibold min-w-[240px] border-r border-slate-200/40">${lesson.NCERT || lesson.ncert || ''}</td>
-                    <td class="py-4 px-6 text-slate-600 text-xs min-w-[240px] border-r border-slate-200/40">${lesson.Assessments || lesson.assessments || ''}</td>
-                    <td class="py-4 px-6 text-slate-600 text-xs min-w-[240px] border-r border-slate-200/40">${lesson.NEET || lesson.neet || ''}</td>
+                    <td class="py-4 px-5 font-semibold text-slate-600 min-w-[100px] border-r border-slate-200/40">${lesson.Month || ''}</td>
+                    <td class="py-4 px-6 text-slate-900 font-semibold min-w-[240px] border-r border-slate-200/40">${lesson.NCERT || ''}</td>
+                    <td class="py-4 px-6 text-slate-600 text-xs min-w-[240px] border-r border-slate-200/40">${lesson.Assessments || ''}</td>
+                    <td class="py-4 px-6 text-slate-600 text-xs min-w-[240px] border-r border-slate-200/40">${lesson.NEET || ''}</td>
                     ${sectionSelectsHTML}
                     <td class="py-4 px-6 min-w-[155px]">
                         <select onchange="updateInteractiveCell('${safeTeacherName}', ${lesson._originalIndex}, 'Status', this.value)" class="p-2 border ${cellSelectBg} rounded-xl font-extrabold cursor-pointer w-full bg-white text-slate-800 text-xs">
@@ -937,27 +951,13 @@
             document.getElementById('stat-completed').innerText = completedCount;
         }
 
-        async function updateInteractiveCell(teacherName, originalIndex, field, value) {
-            let teacher = globalTeachersCache.find(t => t.name === teacherName);
-            if (teacher && teacher.plan && teacher.plan[originalIndex]) {
-                teacher.plan[originalIndex][field] = value;
-
-                try {
-                    const response = await fetch(API_BASE, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(teacher)
-                    });
-
-                    if (response.ok) {
-                        await fetchAllTeachersFromDB();
-                        renderTeacherData(); 
-                    } else {
-                        alert("❌ Failed to update cell state in database.");
-                    }
-                } catch (err) {
-                    alert(`❌ Network error updating cell: ${err.message}`);
-                }
+        function updateInteractiveCell(teacherName, originalIndex, field, value) {
+            let allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+            let tIdx = allTeachers.findIndex(t => t.name === teacherName);
+            if (tIdx !== -1 && allTeachers[tIdx].plan && allTeachers[tIdx].plan[originalIndex]) {
+                allTeachers[tIdx].plan[originalIndex][field] = value;
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(allTeachers));
+                renderTeacherData(); 
             }
         }
 
@@ -968,11 +968,13 @@
             
             if (!selectedName) return alert("Please select a teacher first to export data!");
 
-            const teacher = globalTeachersCache.find(t => t.name === selectedName);
+            const allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+            const teacher = allTeachers.find(t => t.name === selectedName);
+
             if (!teacher || !teacher.plan || teacher.plan.length === 0) return alert("No lesson plan data found to export.");
 
             let filteredPlan = teacher.plan;
-            if (selectedBlock !== "All") filteredPlan = filteredPlan.filter(lesson => (lesson.Block || lesson.block) === selectedBlock);
+            if (selectedBlock !== "All") filteredPlan = filteredPlan.filter(lesson => lesson.Block === selectedBlock);
             if (selectedGrade !== "All") filteredPlan = filteredPlan.filter(lesson => (lesson.Class || lesson.class) === selectedGrade);
 
             if (filteredPlan.length === 0) return alert("No records match active filters.");
@@ -1025,13 +1027,13 @@
             ];
 
             const excelRows = planData.map(lesson => ({
-                "Block": lesson.Block || lesson.block || 'N/A',
-                "Subject": lesson.Subject || lesson.subject || 'N/A',
+                "Block": lesson.Block || 'N/A',
+                "Subject": lesson.Subject || 'N/A',
                 "Class/Grade": lesson.Class || lesson.class || 'N/A',
-                "Month": lesson.Month || lesson.month || '',
-                "NCERT Syllabus": lesson.NCERT || lesson.ncert || '',
-                "Assessments": lesson.Assessments || lesson.assessments || '',
-                "NEET Syllabus": lesson.NEET || lesson.neet || '',
+                "Month": lesson.Month || '',
+                "NCERT Syllabus": lesson.NCERT || '',
+                "Assessments": lesson.Assessments || '',
+                "NEET Syllabus": lesson.NEET || '',
                 "Sec-1": lesson.Sec1 || 'X',
                 "Sec-2": lesson.Sec2 || 'X',
                 "Sec-3": lesson.Sec3 || 'X',
@@ -1063,43 +1065,82 @@
             XLSX.writeFile(workbook, `${safeTeacherName}_${safeBlock}_${safeGrade}_Tracker.xlsx`);
         }
 
-        async function populateEditBlocks() {
+        function populateEditBlocks() {
+            const teacherName = document.getElementById('editTeacherSelect').value;
             const blockSelect = document.getElementById('editBlockSelect');
             const subSelect = document.getElementById('editSubjectSelect');
             const gradeSelect = document.getElementById('editGradeSelect');
+            const allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+            const teacher = allTeachers.find(t => t.name === teacherName);
             
             blockSelect.innerHTML = '<option value="" disabled selected>-- Choose a Block --</option>';
             subSelect.innerHTML = '<option value="" disabled selected>-- Choose Block First --</option>';
             gradeSelect.innerHTML = '<option value="" disabled selected>-- Choose Subject First --</option>';
             document.getElementById('existingPlanContainer').style.display = 'none';
             document.getElementById('noEditDataMsg').style.display = 'none';
-
-            const allBlocks = ['ISAP', 'ISAP G', 'LB', 'CBT', 'LG', 'IT', 'IE', 'PRIMARY'];
-            allBlocks.forEach(blk => blockSelect.innerHTML += `<option value="${blk}">${blk}</option>`);
+            
+            if (teacher && teacher.plan && teacher.plan.length > 0) {
+                const blocks = [...new Set(teacher.plan.map(p => p.Block).filter(Boolean))];
+                blocks.sort().forEach(blk => blockSelect.innerHTML += `<option value="${blk}">${blk}</option>`);
+            }
         }
 
         function populateEditSubjects() {
+            const teacherName = document.getElementById('editTeacherSelect').value;
+            const blockName = document.getElementById('editBlockSelect').value;
             const subSelect = document.getElementById('editSubjectSelect');
             const gradeSelect = document.getElementById('editGradeSelect');
+            const allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+            const teacher = allTeachers.find(t => t.name === teacherName);
             
             subSelect.innerHTML = '<option value="" disabled selected>-- Choose a Subject --</option>';
             gradeSelect.innerHTML = '<option value="" disabled selected>-- Choose Subject First --</option>';
             document.getElementById('existingPlanContainer').style.display = 'none';
             document.getElementById('noEditDataMsg').style.display = 'none';
             
-            const allSubjects = ['TELUGU', 'ENGLISH', 'HINDI', 'MATHS', 'PHYSICS', 'CHEMISTRY', 'BIOLOGY', 'SOCIAL SCIENCE', 'COMPUTER'];
-            allSubjects.forEach(sub => subSelect.innerHTML += `<option value="${sub}">${sub}</option>`);
+            if (teacher && teacher.plan && blockName) {
+                const subjects = [...new Set(teacher.plan.filter(p => p.Block === blockName).map(p => p.Subject).filter(Boolean))];
+                subjects.sort().forEach(sub => subSelect.innerHTML += `<option value="${sub}">${sub}</option>`);
+            }
         }
 
         function populateEditGrades() {
+            const teacherName = document.getElementById('editTeacherSelect').value;
+            const blockName = document.getElementById('editBlockSelect').value;
+            const subjectName = document.getElementById('editSubjectSelect').value;
             const gradeSelect = document.getElementById('editGradeSelect');
             
             gradeSelect.innerHTML = '<option value="" disabled selected>-- Choose a Grade --</option>';
             document.getElementById('existingPlanContainer').style.display = 'none';
             document.getElementById('noEditDataMsg').style.display = 'none';
             
-            for (let i = 1; i <= 10; i++) {
-                gradeSelect.innerHTML += `<option value="Grade ${i}">Grade ${i}</option>`;
+            const allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+            const teacher = allTeachers.find(t => t.name === teacherName);
+            
+            if (!teacher || !teacher.plan || teacher.plan.length === 0) {
+                gradeSelect.innerHTML = '<option value="" disabled>No Generated Plans Found</option>';
+                return;
+            }
+            
+            let foundGrades = new Set();
+
+            teacher.plan.forEach(p => {
+                if (p.Block === blockName && p.Subject === subjectName) {
+                    const classValue = p.Class || p.class;
+                    if (Array.isArray(classValue)) classValue.forEach(c => foundGrades.add(c));
+                    else if (classValue) foundGrades.add(classValue);
+                }
+            });
+
+            if (foundGrades.size > 0) {
+                Array.from(foundGrades).sort().forEach(grd => {
+                    const opt = document.createElement('option');
+                    opt.value = grd; 
+                    opt.textContent = grd;
+                    gradeSelect.appendChild(opt);
+                });
+            } else {
+                gradeSelect.innerHTML = '<option value="" disabled>No Generated Plans Found</option>';
             }
         }
 
@@ -1111,17 +1152,16 @@
             
             if (!teacherName || !blockName || !subjectName || !gradeName) return;
 
-            const teacher = globalTeachersCache.find(t => t.name === teacherName);
-            let planToEdit = teacher && teacher.plan ? teacher.plan.filter(p => 
-                (p.Block || p.block) === blockName && (p.Subject || p.subject) === subjectName && (p.Class || p.class) === gradeName
-            ) : [];
+            const allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+            const teacher = allTeachers.find(t => t.name === teacherName);
 
-            if (planToEdit.length === 0) {
-                planToEdit = ['JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER'].map(month => ({
-                    Block: blockName, Subject: subjectName, Class: gradeName, Month: month,
-                    NCERT: "", Assessments: "", NEET: "", Sec1: "X", Sec2: "X", Sec3: "X", Sec4: "X", Sec5: "X", Sec6: "X", Status: "NOT STARTED"
-                }));
-            }
+            if (!teacher || !teacher.plan) return showNoEditData();
+
+            const planToEdit = teacher.plan.filter(p => 
+                p.Block === blockName && p.Subject === subjectName && (p.Class || p.class) === gradeName
+            );
+
+            if (planToEdit.length === 0) return showNoEditData();
 
             document.getElementById('noEditDataMsg').style.display = 'none';
             document.getElementById('existingPlanContainer').style.display = 'block';
@@ -1130,21 +1170,21 @@
             const getDropdown = (colName, selectedValue, index, options) => {
                 const val = selectedValue || 'X';
                 const styleClass = getSectionStyleClass(val);
-                return `<select data-col="${colName}" data-row="${index}" class="p-2 border ${styleClass} rounded-lg w-full text-xs cursor-pointer shadow-sm">
+                return `<select data-col="${colName}" data-row="${index}" onchange="this.className='p-2 border rounded-lg w-full text-xs cursor-pointer shadow-sm ' + getSectionStyleClass(this.value);" class="p-2 border ${styleClass} rounded-lg w-full text-xs cursor-pointer shadow-sm">
                     ${options.map(opt => `<option value="${opt}" ${val === opt ? 'selected' : ''}>${opt}</option>`).join('')}
                 </select>`;
             };
 
             tbody.innerHTML = planToEdit.map((row, index) => `
                 <tr class="hover:bg-slate-50 border-b border-slate-200/60">
-                    <td class="p-2 min-w-[120px] border-r border-slate-100"><input type="text" data-col="Month" data-row="${index}" value="${row.Month || row.month || ''}" class="w-full p-2 border border-slate-200 rounded-lg text-sm font-semibold bg-white"></td>
-                    <td class="p-2 min-w-[220px] border-r border-slate-100"><input type="text" data-col="NCERT" data-row="${index}" value="${row.NCERT || row.ncert || ''}" class="w-full p-2 border border-slate-200 rounded-lg text-sm text-slate-700 bg-white"></td>
-                    <td class="p-2 min-w-[220px] border-r border-slate-100"><input type="text" data-col="Assessments" data-row="${index}" value="${row.Assessments || row.assessments || ''}" class="w-full p-2 border border-slate-200 rounded-lg text-xs text-slate-500 bg-white"></td>
-                    <td class="p-2 min-w-[220px] border-r border-slate-100"><input type="text" data-col="NEET" data-row="${index}" value="${row.NEET || row.neet || ''}" class="w-full p-2 border border-slate-200 rounded-lg text-xs text-slate-500 bg-white"></td>
+                    <td class="p-2 min-w-[120px] border-r border-slate-100"><input type="text" data-col="Month" data-row="${index}" value="${row.Month || ''}" class="w-full p-2 border border-slate-200 rounded-lg text-sm font-semibold bg-white"></td>
+                    <td class="p-2 min-w-[220px] border-r border-slate-100"><input type="text" data-col="NCERT" data-row="${index}" value="${row.NCERT || ''}" class="w-full p-2 border border-slate-200 rounded-lg text-sm text-slate-700 bg-white"></td>
+                    <td class="p-2 min-w-[220px] border-r border-slate-100"><input type="text" data-col="Assessments" data-row="${index}" value="${row.Assessments || ''}" class="w-full p-2 border border-slate-200 rounded-lg text-xs text-slate-500 bg-white"></td>
+                    <td class="p-2 min-w-[220px] border-r border-slate-100"><input type="text" data-col="NEET" data-row="${index}" value="${row.NEET || ''}" class="w-full p-2 border border-slate-200 rounded-lg text-xs text-slate-500 bg-white"></td>
                     ${['Sec1', 'Sec2', 'Sec3', 'Sec4', 'Sec5', 'Sec6'].map(sec => `
                         <td class="p-2 min-w-[125px] border-r border-slate-100">${getDropdown(sec, row[sec] || 'X', index, ['X', 'NOT STARTED', 'IN PROGRESS', 'COMPLETED'])}</td>
                     `).join('')}
-                    <td class="p-2 min-w-[140px]">${getDropdown('Status', row.Status || row.status || 'NOT STARTED', index, ['NOT STARTED', 'IN PROGRESS', 'COMPLETED'])}</td>
+                    <td class="p-2 min-w-[140px]">${getDropdown('Status', row.Status || 'NOT STARTED', index, ['NOT STARTED', 'IN PROGRESS', 'COMPLETED'])}</td>
                 </tr>
             `).join('');
         }
@@ -1154,7 +1194,7 @@
             document.getElementById('noEditDataMsg').style.display = 'block';
         }
 
-        async function saveEditedPlan() {
+        function saveEditedPlan() {
             const teacherName = document.getElementById('editTeacherSelect').value;
             const blockName = document.getElementById('editBlockSelect').value;
             const subjectName = document.getElementById('editSubjectSelect').value;
@@ -1165,7 +1205,7 @@
             
             tableRows.forEach(row => {
                 if (!row.querySelector('[data-col="Month"]')) return;
-                updatedRows.push({
+                const rowData = {
                     Block: blockName, Subject: subjectName, Class: gradeName, 
                     Month: row.querySelector('[data-col="Month"]').value,
                     NCERT: row.querySelector('[data-col="NCERT"]').value,
@@ -1178,40 +1218,26 @@
                     Sec5: row.querySelector('[data-col="Sec5"]').value,
                     Sec6: row.querySelector('[data-col="Sec6"]').value,
                     Status: row.querySelector('[data-col="Status"]').value
-                });
+                };
+                updatedRows.push(rowData);
             });
 
-            let teacher = globalTeachersCache.find(t => t.name === teacherName);
-            if (!teacher) {
-                teacher = { name: teacherName, assignments: [{ block: blockName, subject: subjectName, classes: [gradeName] }], plan: [] };
-                globalTeachersCache.push(teacher);
-            }
+            let allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+            let tIdx = allTeachers.findIndex(t => t.name === teacherName);
+            
+            if (tIdx !== -1) {
+                let otherPlans = allTeachers[tIdx].plan.filter(p => 
+                    !(p.Block === blockName && p.Subject === subjectName && (p.Class || p.class) === gradeName)
+                );
+                allTeachers[tIdx].plan = [...otherPlans, ...updatedRows];
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(allTeachers));
+                
+                populateTeacherDropdowns(true);
+                populateEditBlocks();
 
-            let otherPlans = teacher.plan ? teacher.plan.filter(p => 
-                !((p.Block || p.block) === blockName && (p.Subject || p.subject) === subjectName && (p.Class || p.class) === gradeName)
-            ) : [];
-            teacher.plan = [...otherPlans, ...updatedRows];
-
-            try {
-                const response = await fetch(API_BASE, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(teacher)
-                });
-
-                if (response.ok) {
-                    await fetchAllTeachersFromDB();
-                    populateTeacherDropdowns(true);
-                    populateEditBlocks();
-
-                    const msg = document.getElementById('editSuccessMsg');
-                    msg.classList.remove('hidden');
-                    setTimeout(() => { msg.classList.add('hidden'); }, 3000);
-                } else {
-                    alert("❌ Failed to update records in database.");
-                }
-            } catch (err) {
-                alert(`❌ Network error saving plan edits: ${err.message}`);
+                const msg = document.getElementById('editSuccessMsg');
+                msg.classList.remove('hidden');
+                setTimeout(() => { msg.classList.add('hidden'); }, 3000);
             }
         }
     </script>
