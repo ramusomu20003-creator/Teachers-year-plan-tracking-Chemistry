@@ -491,7 +491,9 @@
             populateTeacherDropdowns(true);
             if (tab === 'register') resetRegistrationForm();
             if (tab === 'dashboard') populateDashboardBlocks();
-            if (tab === 'teacherEdit') populateEditBlocks();
+            if (tab === 'teacherEdit') {
+                populateEditTeacherDropdown();
+            }
             if (tab === 'manageTeachers') renderTeachersManagement();
         }
 
@@ -793,6 +795,19 @@
                     editSelect.value = "";
                 }
             }
+        }
+
+        async function populateEditTeacherDropdown() {
+            await fetchAllTeachersFromDB();
+            const editSelect = document.getElementById('editTeacherSelect');
+            if (!editSelect) return;
+
+            const sortedTeachers = [...globalTeachersCache].sort((a, b) => a.name.localeCompare(b.name));
+            let optionsHTML = '<option value="" disabled selected>-- Choose a Teacher --</option>';
+            sortedTeachers.forEach(t => {
+                optionsHTML += `<option value="${t.name}">${t.name}</option>`;
+            });
+            editSelect.innerHTML = optionsHTML;
         }
 
         async function populateDashboardBlocks() {
