@@ -282,7 +282,6 @@
     </div>
 
     <script>
-        // Uses relative proxy route /api/teachers so it seamlessly proxies to port 5000 locally and Vercel serverless in production
         const API_BASE = '/api/teachers';
             
         let globalTeachersCache = [];
@@ -753,19 +752,18 @@
             const dashSelect = document.getElementById('dashboardTeacherSelect');
             const editSelect = document.getElementById('editTeacherSelect');
 
-            const teachersWithPlans = globalTeachersCache
-                .filter(t => t.plan && t.plan.length > 0)
-                .sort((a, b) => a.name.localeCompare(b.name));
+            // FIX: Removed restriction filtering out teachers without plans so ALL registered teachers appear immediately
+            const sortedTeachers = [...globalTeachersCache].sort((a, b) => a.name.localeCompare(b.name));
 
             let optionsHTML = '<option value="" disabled selected>-- Choose a Teacher --</option>';
-            teachersWithPlans.forEach(t => {
+            sortedTeachers.forEach(t => {
                 optionsHTML += `<option value="${t.name}">${t.name}</option>`;
             });
 
             if (dashSelect) {
                 const currentDash = dashSelect.value;
                 dashSelect.innerHTML = optionsHTML;
-                if (!resetToDefault && currentDash && teachersWithPlans.find(t => t.name === currentDash)) {
+                if (!resetToDefault && currentDash && sortedTeachers.find(t => t.name === currentDash)) {
                     dashSelect.value = currentDash;
                 } else {
                     dashSelect.value = "";
@@ -775,7 +773,7 @@
             if (editSelect) {
                 const currentEdit = editSelect.value;
                 editSelect.innerHTML = optionsHTML;
-                if (!resetToDefault && currentEdit && teachersWithPlans.find(t => t.name === currentEdit)) {
+                if (!resetToDefault && currentEdit && sortedTeachers.find(t => t.name === currentEdit)) {
                     editSelect.value = currentEdit;
                 } else {
                     editSelect.value = "";
@@ -799,7 +797,7 @@
                     const blocks = [...new Set(teacher.assignments.map(a => a.block))];
                     blocks.sort().forEach(blk => blockSelect.innerHTML += `<option value="${blk}">${blk}</option>`);
                 }
-                if (teacher.plan) {
+                if (teacher.plan && teacher.plan.length > 0) {
                     const grades = [...new Set(teacher.plan.map(p => p.Class || p.class).filter(Boolean))];
                     grades.sort().forEach(grd => gradeSelect.innerHTML += `<option value="${grd}">${grd}</option>`);
                 }
@@ -1056,6 +1054,10 @@
             if (teacher && teacher.plan && teacher.plan.length > 0) {
                 const blocks = [...new Set(teacher.plan.map(p => p.Block).filter(Boolean))];
                 blocks.sort().forEach(blk => blockSelect.innerHTML += `<option value="${blk}">${blk}</option>`);
+            } else if (teacher && teacher.assignments && teacher.assignments.length > 0) {
+                // Fallback to assignments blocks if plan hasn't been generated yet
+                const blocks = [...new Set(teacher.assignments.map(a => a.block).filter(Boolean))];
+                blocks.sort().forEach(blk => blockSelect.innerHTML += `<option value="${blk}">${blk}</option>`);
             }
         }
 
@@ -1071,8 +1073,14 @@
             document.getElementById('existingPlanContainer').style.display = 'none';
             document.getElementById('noEditDataMsg').style.display = 'none';
             
-            if (teacher && teacher.plan && blockName) {
-                const subjects = [...new Set(teacher.plan.filter(p => p.Block === blockName).map(p => p.Subject).filter(Boolean))];
+            if (teacher) {
+                let subjects = [];
+                if (teacher.plan && teacher.plan.length > 0) {
+                    subjects = [...new Set(teacher.plan.filter(p => p.Block === blockName).map(p => p.Subject).filter(Boolean))];
+                }
+                if (subjects.length === 0 && teacher.assignments) {
+                    subjects = [...new Set(teacher.assignments.filter(a => a.block === blockName).map(a => a.subject).filter(Boolean))];
+                }
                 subjects.sort().forEach(sub => subSelect.innerHTML += `<option value="${sub}">${sub}</option>`);
             }
         }
@@ -1088,19 +1096,28 @@
             document.getElementById('noEditDataMsg').style.display = 'none';
             
             const teacher = globalTeachersCache.find(t => t.name === teacherName);
-            if (!teacher || !teacher.plan || teacher.plan.length === 0) {
-                gradeSelect.innerHTML = '<option value="" disabled>No Generated Plans Found</option>';
+            if (!teacher) {
+                gradeSelect.innerHTML = '<option value="" disabled>No Data Found</option>';
                 return;
             }
             
             let foundGrades = new Set();
-            teacher.plan.forEach(p => {
-                if (p.Block === blockName && p.Subject === subjectName) {
-                    const classValue = p.Class || p.class;
-                    if (Array.isArray(classValue)) classValue.forEach(c => foundGrades.add(c));
-                    else if (classValue) foundGrades.add(classValue);
-                }
-            });
+            if (teacher.plan && teacher.plan.length > 0) {
+                teacher.plan.forEach(p => {
+                    if (p.Block === blockName && p.Subject === subjectName) {
+                        const classValue = p.Class || p.class;
+                        if (Array.isArray(classValue)) classValue.forEach(c => foundGrades.add(c));
+                        else if (classValue) foundGrades.add(classValue);
+                    }
+                });
+            }
+            if (foundGrades.size === 0 && teacher.assignments) {
+                teacher.assignments.forEach(a => {
+                    if (a.block === blockName && a.subject === subjectName && a.classes) {
+                        a.classes.forEach(c => foundGrades.add(c));
+                    }
+                });
+            }
 
             if (foundGrades.size > 0) {
                 Array.from(foundGrades).sort().forEach(grd => {
@@ -1123,13 +1140,19 @@
             if (!teacherName || !blockName || !subjectName || !gradeName) return;
 
             const teacher = globalTeachersCache.find(t => t.name === teacherName);
-            if (!teacher || !teacher.plan) return showNoEditData();
+            if (!teacher) return showNoEditData();
 
-            const planToEdit = teacher.plan.filter(p => 
+            let planToEdit = teacher.plan ? teacher.plan.filter(p => 
                 p.Block === blockName && p.Subject === subjectName && (p.Class || p.class) === gradeName
-            );
+            ) : [];
 
-            if (planToEdit.length === 0) return showNoEditData();
+            // If no plan rows exist yet for this assignment, generate temporary edit rows dynamically
+            if (planToEdit.length === 0) {
+                planToEdit = ['JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER'].map(month => ({
+                    Block: blockName, Subject: subjectName, Class: gradeName, Month: month,
+                    NCERT: "", Assessments: "", NEET: "", Sec1: "X", Sec2: "X", Sec3: "X", Sec4: "X", Sec5: "X", Sec6: "X", Status: "NOT STARTED"
+                }));
+            }
 
             document.getElementById('noEditDataMsg').style.display = 'none';
             document.getElementById('existingPlanContainer').style.display = 'block';
@@ -1191,9 +1214,9 @@
 
             let teacher = globalTeachersCache.find(t => t.name === teacherName);
             if (teacher) {
-                let otherPlans = teacher.plan.filter(p => 
+                let otherPlans = teacher.plan ? teacher.plan.filter(p => 
                     !(p.Block === blockName && p.Subject === subjectName && (p.Class || p.class) === gradeName)
-                );
+                ) : [];
                 teacher.plan = [...otherPlans, ...updatedRows];
 
                 try {
