@@ -286,7 +286,7 @@
             
         let globalTeachersCache = [];
 
-        // ONLY admin_user remains
+        // STRICTLY ONLY ADMIN USER REMAINS
         const USER_CREDENTIALS = {
             "admin_user": { pass: "admin123", tabs: ["register", "teacherEdit", "manageTeachers", "dashboard"] }
         };
@@ -686,6 +686,7 @@
 
                 if (response.ok) {
                     await fetchAllTeachersFromDB();
+                    populateTeacherDropdowns(true);
                     alert(`✅ Preset File Plan for ${subject} attached successfully to database!`);
                 } else {
                     const errText = await response.text();
