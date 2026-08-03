@@ -488,13 +488,20 @@
             if (activeBtn) activeBtn.className = TAB_STYLES[tab].active;
 
             await fetchAllTeachersFromDB();
-            populateTeacherDropdowns(true);
-            if (tab === 'register') resetRegistrationForm();
-            if (tab === 'dashboard') populateDashboardBlocks();
-            if (tab === 'teacherEdit') {
-                populateEditTeacherDropdown();
+            
+            if (tab === 'register') {
+                resetRegistrationForm();
             }
-            if (tab === 'manageTeachers') renderTeachersManagement();
+            if (tab === 'dashboard') {
+                populateTeacherDropdowns(true);
+                populateDashboardBlocks();
+            }
+            if (tab === 'teacherEdit') {
+                await populateEditTeacherDropdown(); // Explicitly populate update year plan dropdown
+            }
+            if (tab === 'manageTeachers') {
+                renderTeachersManagement();
+            }
         }
 
         function getSectionStyleClass(val) {
@@ -767,7 +774,6 @@
         async function populateTeacherDropdowns(resetToDefault = false) {
             await fetchAllTeachersFromDB();
             const dashSelect = document.getElementById('dashboardTeacherSelect');
-            const editSelect = document.getElementById('editTeacherSelect');
 
             const sortedTeachers = [...globalTeachersCache].sort((a, b) => a.name.localeCompare(b.name));
 
@@ -785,16 +791,6 @@
                     dashSelect.value = "";
                 }
             }
-
-            if (editSelect) {
-                const currentEdit = editSelect.value;
-                editSelect.innerHTML = optionsHTML;
-                if (!resetToDefault && currentEdit && sortedTeachers.find(t => t.name === currentEdit)) {
-                    editSelect.value = currentEdit;
-                } else {
-                    editSelect.value = "";
-                }
-            }
         }
 
         async function populateEditTeacherDropdown() {
@@ -808,6 +804,8 @@
                 optionsHTML += `<option value="${t.name}">${t.name}</option>`;
             });
             editSelect.innerHTML = optionsHTML;
+            document.getElementById('existingPlanContainer').style.display = 'none';
+            document.getElementById('noEditDataMsg').style.display = 'none';
         }
 
         async function populateDashboardBlocks() {
