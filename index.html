@@ -407,7 +407,11 @@
                     console.error("Server response error:", res.statusText);
                 }
             } catch (err) {
-                console.error("Failed to connect to backend server:", err);
+                console.error("Failed to connect to backend server, falling back to localStorage if available.", err);
+                const localFallback = localStorage.getItem('montessoriMasterDB_V5');
+                if (localFallback) {
+                    globalTeachersCache = JSON.parse(localFallback);
+                }
             }
             return globalTeachersCache;
         }
@@ -497,7 +501,7 @@
                 populateDashboardBlocks();
             }
             if (tab === 'teacherEdit') {
-                await populateEditTeacherDropdown(); // Explicitly populate update year plan dropdown
+                await populateEditTeacherDropdown();
             }
             if (tab === 'manageTeachers') {
                 renderTeachersManagement();
@@ -764,7 +768,6 @@
             const response = await fetch(`${API_BASE}?name=${encodeURIComponent(name)}`, { method: 'DELETE' });
             if (response.ok) {
                 await renderTeachersManagement();
-                await populateTeacherDropdowns(true);
                 resetRegistrationForm();
             } else {
                 alert("❌ Failed to delete teacher profile from database.");
@@ -774,7 +777,6 @@
         async function populateTeacherDropdowns(resetToDefault = false) {
             await fetchAllTeachersFromDB();
             const dashSelect = document.getElementById('dashboardTeacherSelect');
-
             const sortedTeachers = [...globalTeachersCache].sort((a, b) => a.name.localeCompare(b.name));
 
             let optionsHTML = '<option value="" disabled selected>-- Choose a Teacher --</option>';
