@@ -390,6 +390,7 @@
                     const data = await res.json();
                     globalTeachersCache = data.map(t => ({
                         ...t,
+                        name: t.name || t.Name || t.teacherName,
                         assignments: (t.assignments || t.Workloads || []).map(a => ({
                             block: a.block || a.Block,
                             subject: a.subject || a.Subject,
@@ -1050,44 +1051,23 @@
         }
 
         async function populateEditBlocks() {
-            const teacherName = document.getElementById('editTeacherSelect').value;
             const blockSelect = document.getElementById('editBlockSelect');
             const subSelect = document.getElementById('editSubjectSelect');
             const gradeSelect = document.getElementById('editGradeSelect');
-            
-            await fetchAllTeachersFromDB();
-            const teacher = globalTeachersCache.find(t => t.name === teacherName);
             
             blockSelect.innerHTML = '<option value="" disabled selected>-- Choose a Block --</option>';
             subSelect.innerHTML = '<option value="" disabled selected>-- Choose Block First --</option>';
             gradeSelect.innerHTML = '<option value="" disabled selected>-- Choose Subject First --</option>';
             document.getElementById('existingPlanContainer').style.display = 'none';
             document.getElementById('noEditDataMsg').style.display = 'none';
-            
+
             const allBlocks = ['ISAP', 'ISAP G', 'LB', 'CBT', 'LG', 'IT', 'IE', 'PRIMARY'];
-            let blocks = new Set();
-
-            if (teacher) {
-                if (teacher.plan && teacher.plan.length > 0) {
-                    teacher.plan.forEach(p => { if (p.Block || p.block) blocks.add(p.Block || p.block); });
-                }
-                if (blocks.size === 0 && teacher.assignments && teacher.assignments.length > 0) {
-                    teacher.assignments.forEach(a => { if (a.block || a.Block) blocks.add(a.block || a.Block); });
-                }
-            }
-            if (blocks.size === 0) {
-                allBlocks.forEach(b => blocks.add(b));
-            }
-
-            Array.from(blocks).sort().forEach(blk => blockSelect.innerHTML += `<option value="${blk}">${blk}</option>`);
+            allBlocks.forEach(blk => blockSelect.innerHTML += `<option value="${blk}">${blk}</option>`);
         }
 
         function populateEditSubjects() {
-            const teacherName = document.getElementById('editTeacherSelect').value;
-            const blockName = document.getElementById('editBlockSelect').value;
             const subSelect = document.getElementById('editSubjectSelect');
             const gradeSelect = document.getElementById('editGradeSelect');
-            const teacher = globalTeachersCache.find(t => t.name === teacherName);
             
             subSelect.innerHTML = '<option value="" disabled selected>-- Choose a Subject --</option>';
             gradeSelect.innerHTML = '<option value="" disabled selected>-- Choose Subject First --</option>';
@@ -1095,65 +1075,19 @@
             document.getElementById('noEditDataMsg').style.display = 'none';
             
             const allSubjects = ['TELUGU', 'ENGLISH', 'HINDI', 'MATHS', 'PHYSICS', 'CHEMISTRY', 'BIOLOGY', 'SOCIAL SCIENCE', 'COMPUTER'];
-            let subjects = new Set();
-
-            if (teacher) {
-                if (teacher.plan && teacher.plan.length > 0) {
-                    teacher.plan.filter(p => (p.Block || p.block) === blockName).forEach(p => { if (p.Subject || p.subject) subjects.add(p.Subject || p.subject); });
-                }
-                if (subjects.size === 0 && teacher.assignments) {
-                    teacher.assignments.filter(a => (a.block || a.Block) === blockName).forEach(a => { if (a.subject || a.Subject) subjects.add(a.subject || a.Subject); });
-                }
-            }
-            if (subjects.size === 0) {
-                allSubjects.forEach(s => subjects.add(s));
-            }
-
-            Array.from(subjects).sort().forEach(sub => subSelect.innerHTML += `<option value="${sub}">${sub}</option>`);
+            allSubjects.forEach(sub => subSelect.innerHTML += `<option value="${sub}">${sub}</option>`);
         }
 
         function populateEditGrades() {
-            const teacherName = document.getElementById('editTeacherSelect').value;
-            const blockName = document.getElementById('editBlockSelect').value;
-            const subjectName = document.getElementById('editSubjectSelect').value;
             const gradeSelect = document.getElementById('editGradeSelect');
             
             gradeSelect.innerHTML = '<option value="" disabled selected>-- Choose a Grade --</option>';
             document.getElementById('existingPlanContainer').style.display = 'none';
             document.getElementById('noEditDataMsg').style.display = 'none';
             
-            const teacher = globalTeachersCache.find(t => t.name === teacherName);
-            let foundGrades = new Set();
-
-            if (teacher) {
-                if (teacher.plan && teacher.plan.length > 0) {
-                    teacher.plan.forEach(p => {
-                        if ((p.Block || p.block) === blockName && (p.Subject || p.subject) === subjectName) {
-                            const classValue = p.Class || p.class;
-                            if (Array.isArray(classValue)) classValue.forEach(c => foundGrades.add(c));
-                            else if (classValue) foundGrades.add(classValue);
-                        }
-                    });
-                }
-                if (foundGrades.size === 0 && teacher.assignments) {
-                    teacher.assignments.forEach(a => {
-                        if ((a.block || a.Block) === blockName && (a.subject || a.Subject) === subjectName && (a.classes || a.Classes)) {
-                            (a.classes || a.Classes).forEach(c => foundGrades.add(c));
-                        }
-                    });
-                }
+            for (let i = 1; i <= 10; i++) {
+                gradeSelect.innerHTML += `<option value="Grade ${i}">Grade ${i}</option>`;
             }
-
-            if (foundGrades.size === 0) {
-                for (let i = 1; i <= 10; i++) foundGrades.add(`Grade ${i}`);
-            }
-
-            Array.from(foundGrades).sort().forEach(grd => {
-                const opt = document.createElement('option');
-                opt.value = grd; 
-                opt.textContent = grd;
-                gradeSelect.appendChild(opt);
-            });
         }
 
         function loadPlanForEdit() {
