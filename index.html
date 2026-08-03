@@ -386,22 +386,25 @@
                 const res = await fetch(API_BASE);
                 if (res.ok) {
                     const data = await res.json();
-                    console.log("Fetched Teachers Raw Data:", data);
-                    globalTeachersCache = data.map(t => ({
-                        ...t,
-                        name: t.name || t.Name || t.teacherName || t.teacher || "Unknown Teacher",
-                        assignments: (t.assignments || t.Workloads || t.workloads || []).map(a => ({
-                            block: a.block || a.Block,
-                            subject: a.subject || a.Subject,
-                            classes: a.classes || a.Classes || []
-                        })),
-                        plan: (t.plan || t.Plan || []).map(p => ({
-                            ...p,
-                            Block: p.Block || p.block,
-                            Subject: p.Subject || p.subject,
-                            Class: p.Class || p.class
-                        }))
-                    }));
+                    console.log("Database Response Data:", data);
+                    globalTeachersCache = data.map(t => {
+                        const teacherName = t.name || t.Name || t.teacherName || t.teacher || t.title || "Unnamed Teacher";
+                        return {
+                            ...t,
+                            name: teacherName,
+                            assignments: (t.assignments || t.Workloads || t.workloads || []).map(a => ({
+                                block: a.block || a.Block,
+                                subject: a.subject || a.Subject,
+                                classes: a.classes || a.Classes || []
+                            })),
+                            plan: (t.plan || t.Plan || []).map(p => ({
+                                ...p,
+                                Block: p.Block || p.block,
+                                Subject: p.Subject || p.subject,
+                                Class: p.Class || p.class
+                            }))
+                        };
+                    });
                 } else {
                     console.error("Server response error:", res.statusText);
                 }
