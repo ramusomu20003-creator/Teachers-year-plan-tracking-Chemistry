@@ -94,7 +94,7 @@
                 <h3 class="text-2xl font-extrabold text-indigo-950">Register Teacher & Workload</h3>
             </div>
             
-            <form id="registrationForm" onsubmit="handleRegistrationSubmit(event)" class="space-y-8 bg-slate-50/50 p-6 rounded-2xl border border-slate-200/60 shadow-inner mt-4">
+            <form id="registrationForm" class="space-y-8 bg-slate-50/50 p-6 rounded-2xl border border-slate-200/60 shadow-inner mt-4">
                 <div>
                     <label class="block font-bold mb-2 text-slate-700 text-base">Teacher Name</label>
                     <input type="text" id="teacherName" placeholder="Enter teacher name" required class="w-full md:w-1/2 border border-slate-300 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white font-semibold shadow-sm transition">
@@ -102,7 +102,7 @@
                 
                 <div>
                     <h4 class="font-bold text-slate-800 mb-1 text-lg">Workload Assignments</h4>
-                    <p class="text-xs text-slate-500 mb-4">Select the operational block, subject, and assign target grade sections. Plans will auto-generate and attach seamlessly.</p>
+                    <p class="text-xs text-slate-500 mb-4">Select the operational block, subject, and assign target grade sections. You can also auto-generate the preset syllabus directly into the database.</p>
                     
                     <div id="assignments-container" class="space-y-4"></div>
                     
@@ -208,7 +208,7 @@
             </div>
             
             <div class="bg-purple-50 p-4 rounded-xl border border-purple-100 mb-6 text-sm text-purple-800 font-medium">
-                <strong>Instructions:</strong> Select cluster details to modify row parameters and save updates to MongoDB Atlas.
+                <strong>Instructions:</strong> Select cluster details to modify row parameters and save updates to local storage.
             </div>
             <div class="space-y-6 bg-slate-50/50 p-6 rounded-2xl border border-slate-200 shadow-sm">
                 <div class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
@@ -218,15 +218,11 @@
                     </div>
                     <div>
                         <label class="block font-bold mb-2 text-slate-700 text-sm">Select Block</label>
-                        <select id="editBlockSelect" onchange="populateEditSubjects()" class="w-full border border-slate-300 p-3 rounded-xl focus:ring-2 focus:ring-purple-500 bg-white shadow-sm transition font-semibold text-sm">
-                            <option value="" disabled selected>-- Choose Teacher First --</option>
-                        </select>
+                        <select id="editBlockSelect" onchange="populateEditSubjects()" class="w-full border border-slate-300 p-3 rounded-xl focus:ring-2 focus:ring-purple-500 bg-white shadow-sm transition font-semibold text-sm"></select>
                     </div>
                     <div>
                         <label class="block font-bold mb-2 text-slate-700 text-sm">Select Subject</label>
-                        <select id="editSubjectSelect" onchange="populateEditGrades()" class="w-full border border-slate-300 p-3 rounded-xl focus:ring-2 focus:ring-purple-500 bg-white shadow-sm transition font-semibold text-sm">
-                            <option value="" disabled selected>-- Choose Block First --</option>
-                        </select>
+                        <select id="editSubjectSelect" onchange="populateEditGrades()" class="w-full border border-slate-300 p-3 rounded-xl focus:ring-2 focus:ring-purple-500 bg-white shadow-sm transition font-semibold text-sm"></select>
                     </div>
                     <div>
                         <label class="block font-bold mb-2 text-slate-700 text-sm">Select Grade</label>
@@ -286,6 +282,8 @@
     </div>
 
     <script>
+        const STORAGE_KEY = 'montessoriMasterDB_V5'; 
+
         const USER_CREDENTIALS = {
             "dash_user": { pass: "dash123", tabs: ["dashboard"] },
             "edit_user": { pass: "edit123", tabs: ["register", "teacherEdit"] },
@@ -383,37 +381,7 @@
             }
         };
 
-        // Direct MongoDB Atlas API Sync Functions
-        async function loadDataFromDB() {
-            try {
-                const response = await fetch('/api/data', { cache: 'no-store' });
-                if (response.ok) {
-                    const teachers = await response.json();
-                    return teachers || [];
-                }
-            } catch (e) {
-                console.error("Failed to load from MongoDB Atlas", e);
-            }
-            return [];
-        }
-
-        async function saveDataToDB(teachersArray) {
-            try {
-                const response = await fetch('/api/data', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(teachersArray)
-                });
-                if (!response.ok) {
-                    console.error("Failed to sync changes to MongoDB Atlas server");
-                }
-            } catch (e) {
-                console.error("Failed to save to MongoDB Atlas", e);
-                alert("⚠️ Network error: Could not save data to MongoDB Atlas. Please check your internet connection.");
-            }
-        }
-
-        async function initApp() {
+        function initApp() {
             const savedSession = sessionStorage.getItem('portal_user');
             if (savedSession && USER_CREDENTIALS[savedSession]) {
                 applyPortalPermissions(savedSession);
@@ -468,7 +436,7 @@
             switchTab(allowedTabs[0]);
         }
 
-        async function switchTab(tab) {
+        function switchTab(tab) {
             document.getElementById('register-section').style.display = 'none';
             document.getElementById('dashboard-section').style.display = 'none';
             document.getElementById('teacherEdit-section').style.display = 'none';
@@ -487,7 +455,7 @@
             const activeBtn = document.getElementById(`btn-${tab}`);
             if (activeBtn) activeBtn.className = TAB_STYLES[tab].active;
 
-            await populateTeacherDropdowns(true);
+            populateTeacherDropdowns(true);
             if (tab === 'register') resetRegistrationForm();
             if (tab === 'dashboard') populateDashboardBlocks();
             if (tab === 'teacherEdit') populateEditBlocks();
@@ -544,6 +512,12 @@
                             ${classesHTML}
                         </div>
                     </div>
+                    
+                    <div class="mt-4 pt-3 border-t border-slate-100 flex justify-end">
+                        <button type="button" onclick="autoGenerateAndSavePlan(this)" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow transition text-xs flex items-center gap-2">
+                            ⚡ Auto-Generate & Attach Plan
+                        </button>
+                    </div>
                 </div>
             `;
             container.insertAdjacentHTML('beforeend', rowHTML);
@@ -558,13 +532,13 @@
             submitBtn.className = "flex-grow bg-indigo-600 text-white py-4 rounded-xl hover:bg-indigo-700 font-extrabold text-xl shadow-lg transition";
         }
 
-        async function handleRegistrationSubmit(e) {
+        document.getElementById('registrationForm').addEventListener('submit', function(e) {
             e.preventDefault();
             const name = document.getElementById('teacherName').value.trim();
             const assignmentRows = document.querySelectorAll('.assignment-row');
             let assignmentsArray = [];
 
-            let allTeachers = await loadDataFromDB();
+            let allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
             const isUpdateOperation = document.getElementById('regSubmitBtn').innerText.includes("Update Profile Matrix");
 
             if (!isUpdateOperation) {
@@ -588,70 +562,144 @@
             if(assignmentsArray.length === 0) return alert("Please select at least one class for your assignments.");
             
             const existingProfile = allTeachers.find(t => t.name.toLowerCase() === name.toLowerCase());
-            let activePlans = existingProfile ? (existingProfile.plan || []) : [];
-
-            // Automatically generate or append syllabus plan rows so Update Year Plan works instantly
-            assignmentsArray.forEach(assign => {
-                const block = assign.block;
-                const subject = assign.subject;
-                const selectedClasses = assign.classes;
-
-                const isIsapBlock = (block === 'ISAP' || block === 'ISAP G');
-                const isChemistry = (subject === 'CHEMISTRY');
-                const defaultMonths = ['JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER', 'JANUARY', 'FEBRUARY', 'MARCH'];
-
-                selectedClasses.forEach(grade => {
-                    const planExists = activePlans.some(p => p.Block === block && p.Subject === subject && (p.Class || p.class) === grade);
-                    if (!planExists) {
-                        if (isIsapBlock && isChemistry && ISAP_CHEMISTRY_PRESET[grade]) {
-                            ISAP_CHEMISTRY_PRESET[grade].forEach(pRow => {
-                                activePlans.push({
-                                    Block: block, Subject: subject, Class: grade,
-                                    Month: pRow.Month, NCERT: pRow.NCERT, Assessments: pRow.Assessments, NEET: pRow.NEET,
-                                    Sec1: pRow.Sec1 || "X", Sec2: pRow.Sec2 || "X", Sec3: "X", Sec4: "X", Sec5: "X", Sec6: "X",
-                                    Status: pRow.Status
-                                });
-                            });
-                        } else if (PRESET_SYLLABUS[subject] && PRESET_SYLLABUS[subject][grade]) {
-                            PRESET_SYLLABUS[subject][grade].forEach(pRow => {
-                                activePlans.push({
-                                    Block: block, Subject: subject, Class: grade,
-                                    Month: pRow.Month, NCERT: pRow.NCERT, Assessments: pRow.Assessments, NEET: pRow.NEET,
-                                    Sec1: pRow.Sec1 || "X", Sec2: pRow.Sec2 || "X", Sec3: "X", Sec4: "X", Sec5: "X", Sec6: "X",
-                                    Status: pRow.Status
-                                });
-                            });
-                        } else {
-                            defaultMonths.forEach(month => {
-                                activePlans.push({
-                                    Block: block, Subject: subject, Class: grade,
-                                    Month: month, NCERT: "", Assessments: "",
-                                    NEET: (grade === 'Grade 9' || grade === 'Grade 10') ? "NEET Topic" : "N/A",
-                                    Sec1: "X", Sec2: "X", Sec3: "X", Sec4: "X", Sec5: "X", Sec6: "X",
-                                    Status: "NOT STARTED"
-                                });
-                            });
-                        }
-                    }
-                });
-            });
+            const activePlans = existingProfile ? (existingProfile.plan || []) : [];
 
             allTeachers = allTeachers.filter(t => t.name.toLowerCase() !== name.toLowerCase());
             allTeachers.push({ name: name, assignments: assignmentsArray, plan: activePlans }); 
-            await saveDataToDB(allTeachers);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(allTeachers));
 
             document.getElementById('registerMsg').classList.remove('hidden');
             setTimeout(() => { document.getElementById('registerMsg').classList.add('hidden'); }, 3000);
             
             resetRegistrationForm();
-            await populateTeacherDropdowns(true);
+            populateTeacherDropdowns(true);
+        });
+
+        function autoGenerateAndSavePlan(btnElement) {
+            const teacherName = document.getElementById('teacherName').value.trim();
+            if (!teacherName) return alert("Please enter the Teacher Name at the top first!");
+
+            const row = btnElement.closest('.assignment-row');
+            const block = row.querySelector('.t-block').value;
+            const subject = row.querySelector('.t-subject').value;
+            const selectedClasses = Array.from(row.querySelectorAll('.t-class:checked')).map(cb => cb.value);
+
+            if (!block) return alert("Please select a Block Name!");
+            if (!subject) return alert("Please select a Subject!");
+            if (selectedClasses.length === 0) return alert("Please select at least one Grade checkbox!");
+
+            let allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+            let tIdx = allTeachers.findIndex(t => t.name.toLowerCase() === teacherName.toLowerCase());
+
+            if (tIdx !== -1 && allTeachers[tIdx].plan && allTeachers[tIdx].plan.length > 0) {
+                const existingClasses = selectedClasses.filter(grade => 
+                    allTeachers[tIdx].plan.some(p => p.Block === block && p.Subject === subject && (p.Class || p.class) === grade)
+                );
+
+                if (existingClasses.length > 0) {
+                    alert(`⚠️ A year plan has ALREADY been generated for ${subject} (${existingClasses.join(', ')}) under Block "${block}"!\n\nAuto-generation is blocked to prevent overwriting your existing data. Use "Step 3: Update Year Plan" to make updates.`);
+                    return;
+                }
+            }
+
+            const isIsapBlock = (block === 'ISAP' || block === 'ISAP G');
+            const isChemistry = (subject === 'CHEMISTRY');
+
+            let newPlanRows = [];
+            const defaultMonths = ['JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER', 'JANUARY', 'FEBRUARY', 'MARCH'];
+
+            selectedClasses.forEach(grade => {
+                // 1. ISAP / ISAP G & CHEMISTRY
+                if (isIsapBlock && isChemistry && ISAP_CHEMISTRY_PRESET[grade]) {
+                    const presetRows = ISAP_CHEMISTRY_PRESET[grade];
+                    presetRows.forEach(pRow => {
+                        newPlanRows.push({
+                            Block: block,
+                            Subject: subject,
+                            Class: grade,
+                            Month: pRow.Month,
+                            NCERT: pRow.NCERT,
+                            Assessments: pRow.Assessments,
+                            NEET: pRow.NEET,
+                            Sec1: pRow.Sec1 || "X",
+                            Sec2: pRow.Sec2 || "X",
+                            Sec3: pRow.Sec3 || "X",
+                            Sec4: pRow.Sec4 || "X",
+                            Sec5: pRow.Sec5 || "X",
+                            Sec6: pRow.Sec6 || "X",
+                            Status: pRow.Status
+                        });
+                    });
+                }
+                // 2. STANDARD SUBJECT MATCH (including CHEMISTRY for non-ISAP blocks)
+                else if (PRESET_SYLLABUS[subject] && PRESET_SYLLABUS[subject][grade]) {
+                    const presetRows = PRESET_SYLLABUS[subject][grade];
+                    presetRows.forEach(pRow => {
+                        newPlanRows.push({
+                            Block: block,
+                            Subject: subject,
+                            Class: grade,
+                            Month: pRow.Month,
+                            NCERT: pRow.NCERT,
+                            Assessments: pRow.Assessments,
+                            NEET: pRow.NEET,
+                            Sec1: pRow.Sec1 || "X",
+                            Sec2: pRow.Sec2 || "X",
+                            Sec3: pRow.Sec3 || "X",
+                            Sec4: pRow.Sec4 || "X",
+                            Sec5: pRow.Sec5 || "X",
+                            Sec6: pRow.Sec6 || "X",
+                            Status: pRow.Status
+                        });
+                    });
+                } 
+                // 3. FALLBACK DEFAULT MONTHS
+                else {
+                    defaultMonths.forEach(month => {
+                        newPlanRows.push({
+                            Block: block,
+                            Subject: subject,
+                            Class: grade,
+                            Month: month,
+                            NCERT: "",
+                            Assessments: "",
+                            NEET: (grade === 'Grade 9' || grade === 'Grade 10') ? "NEET Topic" : "N/A",
+                            Sec1: "X",
+                            Sec2: "X",
+                            Sec3: "X",
+                            Sec4: "X",
+                            Sec5: "X",
+                            Sec6: "X",
+                            Status: "NOT STARTED"
+                        });
+                    });
+                }
+            });
+
+            if (tIdx === -1) {
+                const assignmentData = [{ block: block, subject: subject, classes: selectedClasses }];
+                allTeachers.push({ name: teacherName, assignments: assignmentData, plan: newPlanRows });
+            } else {
+                allTeachers[tIdx].plan = allTeachers[tIdx].plan || [];
+                allTeachers[tIdx].plan.push(...newPlanRows);
+                
+                const assignExists = allTeachers[tIdx].assignments.some(a => a.block === block && a.subject === subject);
+                if (!assignExists) {
+                    allTeachers[tIdx].assignments.push({ block: block, subject: subject, classes: selectedClasses });
+                }
+            }
+
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(allTeachers));
+            populateTeacherDropdowns(true);
+
+            alert(`✅ Preset File Plan for ${subject} (${selectedClasses.join(', ')}) attached successfully to ${teacherName}'s profile!`);
         }
 
-        async function renderTeachersManagement() {
+        function renderTeachersManagement() {
             const listDiv = document.getElementById('teachersManagementList');
             if(!listDiv) return;
             
-            const allTeachers = await loadDataFromDB();
+            const allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
             if(allTeachers.length === 0) {
                 listDiv.innerHTML = '<div class="col-span-full text-center py-6 bg-slate-50 border border-dashed rounded-xl font-medium text-slate-400 text-sm">No teacher profiles available inside database records.</div>';
                 return;
@@ -680,8 +728,8 @@
             }).join('');
         }
 
-        async function loadTeacherToEdit(name) {
-            const allTeachers = await loadDataFromDB();
+        function loadTeacherToEdit(name) {
+            const allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
             const teacher = allTeachers.find(t => t.name === name);
             if(!teacher) return;
 
@@ -706,37 +754,55 @@
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
-        async function deleteTeacherProfile(name) {
+        function deleteTeacherProfile(name) {
             if(!confirm(`Are you sure you want to permanently delete ${name}?`)) return;
 
-            let allTeachers = await loadDataFromDB();
+            let allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
             allTeachers = allTeachers.filter(t => t.name !== name);
-            await saveDataToDB(allTeachers);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(allTeachers));
 
-            await renderTeachersManagement();
-            await populateTeacherDropdowns(true);
+            renderTeachersManagement();
+            populateTeacherDropdowns(true);
             resetRegistrationForm();
         }
 
-        async function populateTeacherDropdowns(resetToDefault = false) {
-            const allTeachers = await loadDataFromDB();
+        function removeAllTeacherYearPlansAcrossAllBlocks() {
+            const selectedName = document.getElementById('dashboardTeacherSelect').value;
+            if (!selectedName) return alert("Please select a teacher first!");
+
+            if (!confirm(`Are you sure you want to remove ALL year plans across all blocks and grades for ${selectedName}?`)) return;
+
+            let allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+            let teacher = allTeachers.find(t => t.name === selectedName);
+            if (!teacher) return;
+
+            teacher.plan = [];
+            teacher.assignments = [];
+
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(allTeachers));
+            populateDashboardBlocks();
+            alert("🗑️ All year plans removed successfully across all blocks.");
+        }
+
+        function populateTeacherDropdowns(resetToDefault = false) {
+            const allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
             
             const dashSelect = document.getElementById('dashboardTeacherSelect');
             const editSelect = document.getElementById('editTeacherSelect');
 
-            // Show any registered teacher who has assignments or plans
-            const validTeachers = allTeachers.filter(t => (t.plan && t.plan.length > 0) || (t.assignments && t.assignments.length > 0));
-            validTeachers.sort((a, b) => a.name.localeCompare(b.name));
+            const teachersWithPlans = allTeachers
+                .filter(t => t.plan && t.plan.length > 0)
+                .sort((a, b) => a.name.localeCompare(b.name));
 
             let optionsHTML = '<option value="" disabled selected>-- Choose a Teacher --</option>';
-            validTeachers.forEach(t => {
+            teachersWithPlans.forEach(t => {
                 optionsHTML += `<option value="${t.name}">${t.name}</option>`;
             });
 
             if (dashSelect) {
                 const currentDash = dashSelect.value;
                 dashSelect.innerHTML = optionsHTML;
-                if (!resetToDefault && currentDash && validTeachers.find(t => t.name === currentDash)) {
+                if (!resetToDefault && currentDash && teachersWithPlans.find(t => t.name === currentDash)) {
                     dashSelect.value = currentDash;
                 } else {
                     dashSelect.value = "";
@@ -746,7 +812,7 @@
             if (editSelect) {
                 const currentEdit = editSelect.value;
                 editSelect.innerHTML = optionsHTML;
-                if (!resetToDefault && currentEdit && validTeachers.find(t => t.name === currentEdit)) {
+                if (!resetToDefault && currentEdit && teachersWithPlans.find(t => t.name === currentEdit)) {
                     editSelect.value = currentEdit;
                 } else {
                     editSelect.value = "";
@@ -754,11 +820,11 @@
             }
         }
 
-        async function populateDashboardBlocks() {
+        function populateDashboardBlocks() {
             const selectedName = document.getElementById('dashboardTeacherSelect').value;
             const blockSelect = document.getElementById('dashboardBlockSelect');
             const gradeSelect = document.getElementById('dashboardGradeSelect');
-            const allTeachers = await loadDataFromDB();
+            const allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
             const teacher = allTeachers.find(t => t.name === selectedName);
 
             blockSelect.innerHTML = '<option value="All">All Blocks</option>';
@@ -773,19 +839,19 @@
                     const grades = [...new Set(teacher.plan.map(p => p.Class || p.class).filter(Boolean))];
                     grades.sort().forEach(grd => gradeSelect.innerHTML += `<option value="${grd}">${grd}</option>`);
                 }
-                await renderTeacherData();
+                renderTeacherData();
             } else {
                 document.getElementById('teacher-dashboard-content').style.display = 'none';
                 document.getElementById('noDataMsg').style.display = 'block';
             }
         }
 
-        async function renderTeacherData() {
+        function renderTeacherData() {
             const selectedName = document.getElementById('dashboardTeacherSelect').value;
             const selectedBlock = document.getElementById('dashboardBlockSelect').value; 
             const selectedGrade = document.getElementById('dashboardGradeSelect').value;
             
-            const allTeachers = await loadDataFromDB();
+            const allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
             const teacher = allTeachers.find(t => t.name === selectedName);
 
             if (!teacher) return;
@@ -885,24 +951,24 @@
             document.getElementById('stat-completed').innerText = completedCount;
         }
 
-        async function updateInteractiveCell(teacherName, originalIndex, field, value) {
-            let allTeachers = await loadDataFromDB();
+        function updateInteractiveCell(teacherName, originalIndex, field, value) {
+            let allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
             let tIdx = allTeachers.findIndex(t => t.name === teacherName);
             if (tIdx !== -1 && allTeachers[tIdx].plan && allTeachers[tIdx].plan[originalIndex]) {
                 allTeachers[tIdx].plan[originalIndex][field] = value;
-                await saveDataToDB(allTeachers);
-                await renderTeacherData(); 
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(allTeachers));
+                renderTeacherData(); 
             }
         }
 
-        async function exportToExcel() {
+        function exportToExcel() {
             const selectedName = document.getElementById('dashboardTeacherSelect').value;
             const selectedBlock = document.getElementById('dashboardBlockSelect').value; 
             const selectedGrade = document.getElementById('dashboardGradeSelect').value;
             
             if (!selectedName) return alert("Please select a teacher first to export data!");
 
-            const allTeachers = await loadDataFromDB();
+            const allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
             const teacher = allTeachers.find(t => t.name === selectedName);
 
             if (!teacher || !teacher.plan || teacher.plan.length === 0) return alert("No lesson plan data found to export.");
@@ -916,7 +982,7 @@
             generateWorkbookDownload(filteredPlan, selectedName, selectedBlock, selectedGrade);
         }
 
-        async function exportEditPlanToExcel() {
+        function exportEditPlanToExcel() {
             const teacherName = document.getElementById('editTeacherSelect').value;
             const blockName = document.getElementById('editBlockSelect').value;
             const subjectName = document.getElementById('editSubjectSelect').value;
@@ -999,12 +1065,12 @@
             XLSX.writeFile(workbook, `${safeTeacherName}_${safeBlock}_${safeGrade}_Tracker.xlsx`);
         }
 
-        async function populateEditBlocks() {
+        function populateEditBlocks() {
             const teacherName = document.getElementById('editTeacherSelect').value;
             const blockSelect = document.getElementById('editBlockSelect');
             const subSelect = document.getElementById('editSubjectSelect');
             const gradeSelect = document.getElementById('editGradeSelect');
-            const allTeachers = await loadDataFromDB();
+            const allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
             const teacher = allTeachers.find(t => t.name === teacherName);
             
             blockSelect.innerHTML = '<option value="" disabled selected>-- Choose a Block --</option>';
@@ -1013,29 +1079,18 @@
             document.getElementById('existingPlanContainer').style.display = 'none';
             document.getElementById('noEditDataMsg').style.display = 'none';
             
-            if (teacher) {
-                let availableBlocks = new Set();
-                if (teacher.plan && teacher.plan.length > 0) {
-                    teacher.plan.forEach(p => { if (p.Block) availableBlocks.add(p.Block); });
-                }
-                if (availableBlocks.size === 0 && teacher.assignments) {
-                    teacher.assignments.forEach(a => { if (a.block) availableBlocks.add(a.block); });
-                }
-                
-                if (availableBlocks.size > 0) {
-                    Array.from(availableBlocks).sort().forEach(blk => {
-                        blockSelect.innerHTML += `<option value="${blk}">${blk}</option>`;
-                    });
-                }
+            if (teacher && teacher.plan && teacher.plan.length > 0) {
+                const blocks = [...new Set(teacher.plan.map(p => p.Block).filter(Boolean))];
+                blocks.sort().forEach(blk => blockSelect.innerHTML += `<option value="${blk}">${blk}</option>`);
             }
         }
 
-        async function populateEditSubjects() {
+        function populateEditSubjects() {
             const teacherName = document.getElementById('editTeacherSelect').value;
             const blockName = document.getElementById('editBlockSelect').value;
             const subSelect = document.getElementById('editSubjectSelect');
             const gradeSelect = document.getElementById('editGradeSelect');
-            const allTeachers = await loadDataFromDB();
+            const allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
             const teacher = allTeachers.find(t => t.name === teacherName);
             
             subSelect.innerHTML = '<option value="" disabled selected>-- Choose a Subject --</option>';
@@ -1043,24 +1098,13 @@
             document.getElementById('existingPlanContainer').style.display = 'none';
             document.getElementById('noEditDataMsg').style.display = 'none';
             
-            if (teacher && blockName) {
-                let availableSubjects = new Set();
-                if (teacher.plan && teacher.plan.length > 0) {
-                    teacher.plan.filter(p => p.Block === blockName).forEach(p => { if (p.Subject) availableSubjects.add(p.Subject); });
-                }
-                if (availableSubjects.size === 0 && teacher.assignments) {
-                    teacher.assignments.filter(a => a.block === blockName).forEach(a => { if (a.subject) availableSubjects.add(a.subject); });
-                }
-
-                if (availableSubjects.size > 0) {
-                    Array.from(availableSubjects).sort().forEach(sub => {
-                        subSelect.innerHTML += `<option value="${sub}">${sub}</option>`;
-                    });
-                }
+            if (teacher && teacher.plan && blockName) {
+                const subjects = [...new Set(teacher.plan.filter(p => p.Block === blockName).map(p => p.Subject).filter(Boolean))];
+                subjects.sort().forEach(sub => subSelect.innerHTML += `<option value="${sub}">${sub}</option>`);
             }
         }
 
-        async function populateEditGrades() {
+        function populateEditGrades() {
             const teacherName = document.getElementById('editTeacherSelect').value;
             const blockName = document.getElementById('editBlockSelect').value;
             const subjectName = document.getElementById('editSubjectSelect').value;
@@ -1070,33 +1114,23 @@
             document.getElementById('existingPlanContainer').style.display = 'none';
             document.getElementById('noEditDataMsg').style.display = 'none';
             
-            const allTeachers = await loadDataFromDB();
+            const allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
             const teacher = allTeachers.find(t => t.name === teacherName);
             
-            if (!teacher) {
+            if (!teacher || !teacher.plan || teacher.plan.length === 0) {
                 gradeSelect.innerHTML = '<option value="" disabled>No Generated Plans Found</option>';
                 return;
             }
             
             let foundGrades = new Set();
 
-            if (teacher.plan) {
-                teacher.plan.forEach(p => {
-                    if (p.Block === blockName && p.Subject === subjectName) {
-                        const classValue = p.Class || p.class;
-                        if (Array.isArray(classValue)) classValue.forEach(c => foundGrades.add(c));
-                        else if (classValue) foundGrades.add(classValue);
-                    }
-                });
-            }
-
-            if (foundGrades.size === 0 && teacher.assignments) {
-                teacher.assignments.forEach(a => {
-                    if (a.block === blockName && a.subject === subjectName && a.classes) {
-                        a.classes.forEach(c => foundGrades.add(c));
-                    }
-                });
-            }
+            teacher.plan.forEach(p => {
+                if (p.Block === blockName && p.Subject === subjectName) {
+                    const classValue = p.Class || p.class;
+                    if (Array.isArray(classValue)) classValue.forEach(c => foundGrades.add(c));
+                    else if (classValue) foundGrades.add(classValue);
+                }
+            });
 
             if (foundGrades.size > 0) {
                 Array.from(foundGrades).sort().forEach(grd => {
@@ -1110,7 +1144,7 @@
             }
         }
 
-        async function loadPlanForEdit() {
+        function loadPlanForEdit() {
             const teacherName = document.getElementById('editTeacherSelect').value;
             const blockName = document.getElementById('editBlockSelect').value;
             const subjectName = document.getElementById('editSubjectSelect').value;
@@ -1118,32 +1152,14 @@
             
             if (!teacherName || !blockName || !subjectName || !gradeName) return;
 
-            let allTeachers = await loadDataFromDB();
-            let teacher = allTeachers.find(t => t.name === teacherName);
+            const allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+            const teacher = allTeachers.find(t => t.name === teacherName);
 
-            if (!teacher) return showNoEditData();
+            if (!teacher || !teacher.plan) return showNoEditData();
 
-            if (!teacher.plan) teacher.plan = [];
-            let planToEdit = teacher.plan.filter(p => 
+            const planToEdit = teacher.plan.filter(p => 
                 p.Block === blockName && p.Subject === subjectName && (p.Class || p.class) === gradeName
             );
-
-            if (planToEdit.length === 0) {
-                const defaultMonths = ['JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER', 'JANUARY', 'FEBRUARY', 'MARCH'];
-                defaultMonths.forEach(month => {
-                    teacher.plan.push({
-                        Block: blockName, Subject: subjectName, Class: gradeName,
-                        Month: month, NCERT: "", Assessments: "",
-                        NEET: (gradeName === 'Grade 9' || gradeName === 'Grade 10') ? "NEET Topic" : "N/A",
-                        Sec1: "X", Sec2: "X", Sec3: "X", Sec4: "X", Sec5: "X", Sec6: "X",
-                        Status: "NOT STARTED"
-                    });
-                });
-                await saveDataToDB(allTeachers);
-                planToEdit = teacher.plan.filter(p => 
-                    p.Block === blockName && p.Subject === subjectName && (p.Class || p.class) === gradeName
-                );
-            }
 
             if (planToEdit.length === 0) return showNoEditData();
 
@@ -1178,7 +1194,7 @@
             document.getElementById('noEditDataMsg').style.display = 'block';
         }
 
-        async function saveEditedPlan() {
+        function saveEditedPlan() {
             const teacherName = document.getElementById('editTeacherSelect').value;
             const blockName = document.getElementById('editBlockSelect').value;
             const subjectName = document.getElementById('editSubjectSelect').value;
@@ -1206,18 +1222,18 @@
                 updatedRows.push(rowData);
             });
 
-            let allTeachers = await loadDataFromDB();
+            let allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
             let tIdx = allTeachers.findIndex(t => t.name === teacherName);
             
             if (tIdx !== -1) {
-                let otherPlans = (allTeachers[tIdx].plan || []).filter(p => 
+                let otherPlans = allTeachers[tIdx].plan.filter(p => 
                     !(p.Block === blockName && p.Subject === subjectName && (p.Class || p.class) === gradeName)
                 );
                 allTeachers[tIdx].plan = [...otherPlans, ...updatedRows];
-                await saveDataToDB(allTeachers);
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(allTeachers));
                 
-                await populateTeacherDropdowns(true);
-                await populateEditBlocks();
+                populateTeacherDropdowns(true);
+                populateEditBlocks();
 
                 const msg = document.getElementById('editSuccessMsg');
                 msg.classList.remove('hidden');
