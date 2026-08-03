@@ -102,7 +102,7 @@
                 
                 <div>
                     <h4 class="font-bold text-slate-800 mb-1 text-lg">Workload Assignments</h4>
-                    <p class="text-xs text-slate-500 mb-4">Select the operational block, subject, and assign target grade sections. You can also auto-generate the preset syllabus directly into the database.</p>
+                    <p class="text-xs text-slate-500 mb-4">Select the operational block, subject, and assign target grade sections. Plans will auto-generate and attach seamlessly.</p>
                     
                     <div id="assignments-container" class="space-y-4"></div>
                     
@@ -379,7 +379,7 @@
             }
         };
 
-        // Direct MongoDB Atlas API Sync Functions (Ensures complete cross-device synchronization)
+        // Direct MongoDB Atlas API Sync Functions
         async function loadDataFromDB() {
             try {
                 const response = await fetch('/api/data');
@@ -540,12 +540,6 @@
                             ${classesHTML}
                         </div>
                     </div>
-                    
-                    <div class="mt-4 pt-3 border-t border-slate-100 flex justify-end">
-                        <button type="button" onclick="autoGenerateAndSavePlan(this)" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow transition text-xs flex items-center gap-2">
-                            ⚡ Auto-Generate & Attach Plan
-                        </button>
-                    </div>
                 </div>
             `;
             container.insertAdjacentHTML('beforeend', rowHTML);
@@ -590,7 +584,53 @@
             if(assignmentsArray.length === 0) return alert("Please select at least one class for your assignments.");
             
             const existingProfile = allTeachers.find(t => t.name.toLowerCase() === name.toLowerCase());
-            const activePlans = existingProfile ? (existingProfile.plan || []) : [];
+            let activePlans = existingProfile ? (existingProfile.plan || []) : [];
+
+            // Automatically generate or append syllabus plan rows for every selected assignment
+            assignmentsArray.forEach(assign => {
+                const block = assign.block;
+                const subject = assign.subject;
+                const selectedClasses = assign.classes;
+
+                const isIsapBlock = (block === 'ISAP' || block === 'ISAP G');
+                const isChemistry = (subject === 'CHEMISTRY');
+                const defaultMonths = ['JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER', 'JANUARY', 'FEBRUARY', 'MARCH'];
+
+                selectedClasses.forEach(grade => {
+                    const planExists = activePlans.some(p => p.Block === block && p.Subject === subject && (p.Class || p.class) === grade);
+                    if (!planExists) {
+                        if (isIsapBlock && isChemistry && ISAP_CHEMISTRY_PRESET[grade]) {
+                            ISAP_CHEMISTRY_PRESET[grade].forEach(pRow => {
+                                activePlans.push({
+                                    Block: block, Subject: subject, Class: grade,
+                                    Month: pRow.Month, NCERT: pRow.NCERT, Assessments: pRow.Assessments, NEET: pRow.NEET,
+                                    Sec1: pRow.Sec1 || "X", Sec2: pRow.Sec2 || "X", Sec3: "X", Sec4: "X", Sec5: "X", Sec6: "X",
+                                    Status: pRow.Status
+                                });
+                            });
+                        } else if (PRESET_SYLLABUS[subject] && PRESET_SYLLABUS[subject][grade]) {
+                            PRESET_SYLLABUS[subject][grade].forEach(pRow => {
+                                activePlans.push({
+                                    Block: block, Subject: subject, Class: grade,
+                                    Month: pRow.Month, NCERT: pRow.NCERT, Assessments: pRow.Assessments, NEET: pRow.NEET,
+                                    Sec1: pRow.Sec1 || "X", Sec2: pRow.Sec2 || "X", Sec3: "X", Sec4: "X", Sec5: "X", Sec6: "X",
+                                    Status: pRow.Status
+                                });
+                            });
+                        } else {
+                            defaultMonths.forEach(month => {
+                                activePlans.push({
+                                    Block: block, Subject: subject, Class: grade,
+                                    Month: month, NCERT: "", Assessments: "",
+                                    NEET: (grade === 'Grade 9' || grade === 'Grade 10') ? "NEET Topic" : "N/A",
+                                    Sec1: "X", Sec2: "X", Sec3: "X", Sec4: "X", Sec5: "X", Sec6: "X",
+                                    Status: "NOT STARTED"
+                                });
+                            });
+                        }
+                    }
+                });
+            });
 
             allTeachers = allTeachers.filter(t => t.name.toLowerCase() !== name.toLowerCase());
             allTeachers.push({ name: name, assignments: assignmentsArray, plan: activePlans }); 
@@ -601,123 +641,6 @@
             
             resetRegistrationForm();
             await populateTeacherDropdowns(true);
-        }
-
-        async function autoGenerateAndSavePlan(btnElement) {
-            const teacherName = document.getElementById('teacherName').value.trim();
-            if (!teacherName) return alert("Please enter the Teacher Name at the top first!");
-
-            const row = btnElement.closest('.assignment-row');
-            const block = row.querySelector('.t-block').value;
-            const subject = row.querySelector('.t-subject').value;
-            const selectedClasses = Array.from(row.querySelectorAll('.t-class:checked')).map(cb => cb.value);
-
-            if (!block) return alert("Please select a Block Name!");
-            if (!subject) return alert("Please select a Subject!");
-            if (selectedClasses.length === 0) return alert("Please select at least one Grade checkbox!");
-
-            let allTeachers = await loadDataFromDB();
-            let tIdx = allTeachers.findIndex(t => t.name.toLowerCase() === teacherName.toLowerCase());
-
-            if (tIdx !== -1 && allTeachers[tIdx].plan && allTeachers[tIdx].plan.length > 0) {
-                const existingClasses = selectedClasses.filter(grade => 
-                    allTeachers[tIdx].plan.some(p => p.Block === block && p.Subject === subject && (p.Class || p.class) === grade)
-                );
-
-                if (existingClasses.length > 0) {
-                    alert(`⚠️ A year plan has ALREADY been generated for ${subject} (${existingClasses.join(', ')}) under Block "${block}"!\n\nAuto-generation is blocked to prevent overwriting your existing data. Use "Step 3: Update Year Plan" to make updates.`);
-                    return;
-                }
-            }
-
-            const isIsapBlock = (block === 'ISAP' || block === 'ISAP G');
-            const isChemistry = (subject === 'CHEMISTRY');
-
-            let newPlanRows = [];
-            const defaultMonths = ['JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER', 'JANUARY', 'FEBRUARY', 'MARCH'];
-
-            selectedClasses.forEach(grade => {
-                if (isIsapBlock && isChemistry && ISAP_CHEMISTRY_PRESET[grade]) {
-                    const presetRows = ISAP_CHEMISTRY_PRESET[grade];
-                    presetRows.forEach(pRow => {
-                        newPlanRows.push({
-                            Block: block,
-                            Subject: subject,
-                            Class: grade,
-                            Month: pRow.Month,
-                            NCERT: pRow.NCERT,
-                            Assessments: pRow.Assessments,
-                            NEET: pRow.NEET,
-                            Sec1: pRow.Sec1 || "X",
-                            Sec2: pRow.Sec2 || "X",
-                            Sec3: pRow.Sec3 || "X",
-                            Sec4: pRow.Sec4 || "X",
-                            Sec5: pRow.Sec5 || "X",
-                            Sec6: pRow.Sec6 || "X",
-                            Status: pRow.Status
-                        });
-                    });
-                }
-                else if (PRESET_SYLLABUS[subject] && PRESET_SYLLABUS[subject][grade]) {
-                    const presetRows = PRESET_SYLLABUS[subject][grade];
-                    presetRows.forEach(pRow => {
-                        newPlanRows.push({
-                            Block: block,
-                            Subject: subject,
-                            Class: grade,
-                            Month: pRow.Month,
-                            NCERT: pRow.NCERT,
-                            Assessments: pRow.Assessments,
-                            NEET: pRow.NEET,
-                            Sec1: pRow.Sec1 || "X",
-                            Sec2: pRow.Sec2 || "X",
-                            Sec3: pRow.Sec3 || "X",
-                            Sec4: pRow.Sec4 || "X",
-                            Sec5: pRow.Sec5 || "X",
-                            Sec6: pRow.Sec6 || "X",
-                            Status: pRow.Status
-                        });
-                    });
-                } 
-                else {
-                    defaultMonths.forEach(month => {
-                        newPlanRows.push({
-                            Block: block,
-                            Subject: subject,
-                            Class: grade,
-                            Month: month,
-                            NCERT: "",
-                            Assessments: "",
-                            NEET: (grade === 'Grade 9' || grade === 'Grade 10') ? "NEET Topic" : "N/A",
-                            Sec1: "X",
-                            Sec2: "X",
-                            Sec3: "X",
-                            Sec4: "X",
-                            Sec5: "X",
-                            Sec6: "X",
-                            Status: "NOT STARTED"
-                        });
-                    });
-                }
-            });
-
-            if (tIdx === -1) {
-                const assignmentData = [{ block: block, subject: subject, classes: selectedClasses }];
-                allTeachers.push({ name: teacherName, assignments: assignmentData, plan: newPlanRows });
-            } else {
-                allTeachers[tIdx].plan = allTeachers[tIdx].plan || [];
-                allTeachers[tIdx].plan.push(...newPlanRows);
-                
-                const assignExists = allTeachers[tIdx].assignments.some(a => a.block === block && a.subject === subject);
-                if (!assignExists) {
-                    allTeachers[tIdx].assignments.push({ block: block, subject: subject, classes: selectedClasses });
-                }
-            }
-
-            await saveDataToDB(allTeachers);
-            await populateTeacherDropdowns(true);
-
-            alert(`✅ Preset File Plan for ${subject} (${selectedClasses.join(', ')}) attached successfully to ${teacherName}'s profile!`);
         }
 
         async function renderTeachersManagement() {
