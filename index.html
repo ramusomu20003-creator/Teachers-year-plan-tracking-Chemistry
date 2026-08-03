@@ -37,7 +37,7 @@
                     </div>
                     <div class="inline-block mt-2.5 px-4 py-1 bg-gradient-to-r from-indigo-50 to-blue-50 rounded-full border border-indigo-100 shadow-sm">
                         <p class="text-xs text-indigo-700 font-extrabold uppercase tracking-widest">
-                            Teachers year Plan Tracker
+                            Teachers Year Plan Tracker
                         </p>
                     </div>
                 </div>
@@ -102,7 +102,7 @@
                 
                 <div>
                     <h4 class="font-bold text-slate-800 mb-1 text-lg">Workload Assignments</h4>
-                    <p class="text-xs text-slate-500 mb-4">Select the operational block, subject, and assign target grade sections. You can also auto-generate the preset syllabus directly into the database.</p>
+                    <p class="text-xs text-slate-500 mb-4">Select the operational block, subject, and assign target grade sections. You can also auto-generate the preset syllabus directly into MongoDB.</p>
                     
                     <div id="assignments-container" class="space-y-4"></div>
                     
@@ -116,7 +116,7 @@
                     <button type="button" onclick="resetRegistrationForm()" class="px-8 bg-rose-400 text-white py-4 rounded-xl hover:bg-rose-500 font-extrabold text-lg shadow-lg transition flex items-center justify-center gap-2">🧹 Clear Form</button>
                 </div>
             </form>
-            <div id="registerMsg" class="mt-4 text-center font-bold text-emerald-700 hidden bg-emerald-50 p-3 rounded-xl border border-emerald-200 shadow-sm">Teacher profile configured successfully!</div>
+            <div id="registerMsg" class="mt-4 text-center font-bold text-emerald-700 hidden bg-emerald-50 p-3 rounded-xl border border-emerald-200 shadow-sm">Teacher profile saved successfully to MongoDB!</div>
         </div>
 
         <!-- TAB 2: DASHBOARD TRACKING -->
@@ -208,7 +208,7 @@
             </div>
             
             <div class="bg-purple-50 p-4 rounded-xl border border-purple-100 mb-6 text-sm text-purple-800 font-medium">
-                <strong>Instructions:</strong> Select cluster details to modify row parameters and save updates to local storage.
+                <strong>Instructions:</strong> Select cluster details to modify row parameters and save updates directly to MongoDB.
             </div>
             <div class="space-y-6 bg-slate-50/50 p-6 rounded-2xl border border-slate-200 shadow-sm">
                 <div class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
@@ -282,7 +282,10 @@
     </div>
 
     <script>
-        const STORAGE_KEY = 'montessoriMasterDB_V5'; 
+        // Uses relative proxy route /api/teachers so it seamlessly proxies to port 5000 locally and Vercel serverless in production
+        const API_BASE = '/api/teachers';
+            
+        let globalTeachersCache = [];
 
         const USER_CREDENTIALS = {
             "dash_user": { pass: "dash123", tabs: ["dashboard"] },
@@ -381,7 +384,22 @@
             }
         };
 
-        function initApp() {
+        async function fetchAllTeachersFromDB() {
+            try {
+                const res = await fetch(API_BASE);
+                if (res.ok) {
+                    globalTeachersCache = await res.json();
+                } else {
+                    console.error("Server response error:", res.statusText);
+                }
+            } catch (err) {
+                console.error("Failed to connect to backend server:", err);
+            }
+            return globalTeachersCache;
+        }
+
+        async function initApp() {
+            await fetchAllTeachersFromDB();
             const savedSession = sessionStorage.getItem('portal_user');
             if (savedSession && USER_CREDENTIALS[savedSession]) {
                 applyPortalPermissions(savedSession);
@@ -436,7 +454,7 @@
             switchTab(allowedTabs[0]);
         }
 
-        function switchTab(tab) {
+        async function switchTab(tab) {
             document.getElementById('register-section').style.display = 'none';
             document.getElementById('dashboard-section').style.display = 'none';
             document.getElementById('teacherEdit-section').style.display = 'none';
@@ -455,6 +473,7 @@
             const activeBtn = document.getElementById(`btn-${tab}`);
             if (activeBtn) activeBtn.className = TAB_STYLES[tab].active;
 
+            await fetchAllTeachersFromDB();
             populateTeacherDropdowns(true);
             if (tab === 'register') resetRegistrationForm();
             if (tab === 'dashboard') populateDashboardBlocks();
@@ -532,22 +551,11 @@
             submitBtn.className = "flex-grow bg-indigo-600 text-white py-4 rounded-xl hover:bg-indigo-700 font-extrabold text-xl shadow-lg transition";
         }
 
-        document.getElementById('registrationForm').addEventListener('submit', function(e) {
+        document.getElementById('registrationForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             const name = document.getElementById('teacherName').value.trim();
             const assignmentRows = document.querySelectorAll('.assignment-row');
             let assignmentsArray = [];
-
-            let allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-            const isUpdateOperation = document.getElementById('regSubmitBtn').innerText.includes("Update Profile Matrix");
-
-            if (!isUpdateOperation) {
-                const nameExists = allTeachers.some(t => t.name.toLowerCase() === name.toLowerCase());
-                if (nameExists) {
-                    alert(`⚠️ A database entry for "${name}" already exists.`);
-                    return;
-                }
-            }
 
             assignmentRows.forEach(row => {
                 const block = row.querySelector('.t-block').value;
@@ -561,21 +569,35 @@
 
             if(assignmentsArray.length === 0) return alert("Please select at least one class for your assignments.");
             
-            const existingProfile = allTeachers.find(t => t.name.toLowerCase() === name.toLowerCase());
+            await fetchAllTeachersFromDB();
+            const existingProfile = globalTeachersCache.find(t => t.name.toLowerCase() === name.toLowerCase());
             const activePlans = existingProfile ? (existingProfile.plan || []) : [];
 
-            allTeachers = allTeachers.filter(t => t.name.toLowerCase() !== name.toLowerCase());
-            allTeachers.push({ name: name, assignments: assignmentsArray, plan: activePlans }); 
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(allTeachers));
+            const payload = { name: name, assignments: assignmentsArray, plan: activePlans };
 
-            document.getElementById('registerMsg').classList.remove('hidden');
-            setTimeout(() => { document.getElementById('registerMsg').classList.add('hidden'); }, 3000);
-            
-            resetRegistrationForm();
-            populateTeacherDropdowns(true);
+            try {
+                const response = await fetch(API_BASE, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (response.ok) {
+                    document.getElementById('registerMsg').classList.remove('hidden');
+                    setTimeout(() => { document.getElementById('registerMsg').classList.add('hidden'); }, 3000);
+                    resetRegistrationForm();
+                    await fetchAllTeachersFromDB();
+                    populateTeacherDropdowns(true);
+                } else {
+                    const errText = await response.text();
+                    alert(`❌ Failed to save profile to database: ${errText}`);
+                }
+            } catch (err) {
+                alert(`❌ Network error connecting to backend: ${err.message}`);
+            }
         });
 
-        function autoGenerateAndSavePlan(btnElement) {
+        async function autoGenerateAndSavePlan(btnElement) {
             const teacherName = document.getElementById('teacherName').value.trim();
             if (!teacherName) return alert("Please enter the Teacher Name at the top first!");
 
@@ -588,16 +610,16 @@
             if (!subject) return alert("Please select a Subject!");
             if (selectedClasses.length === 0) return alert("Please select at least one Grade checkbox!");
 
-            let allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-            let tIdx = allTeachers.findIndex(t => t.name.toLowerCase() === teacherName.toLowerCase());
+            await fetchAllTeachersFromDB();
+            let teacher = globalTeachersCache.find(t => t.name.toLowerCase() === teacherName.toLowerCase());
 
-            if (tIdx !== -1 && allTeachers[tIdx].plan && allTeachers[tIdx].plan.length > 0) {
+            if (teacher && teacher.plan && teacher.plan.length > 0) {
                 const existingClasses = selectedClasses.filter(grade => 
-                    allTeachers[tIdx].plan.some(p => p.Block === block && p.Subject === subject && (p.Class || p.class) === grade)
+                    teacher.plan.some(p => p.Block === block && p.Subject === subject && (p.Class || p.class) === grade)
                 );
 
                 if (existingClasses.length > 0) {
-                    alert(`⚠️ A year plan has ALREADY been generated for ${subject} (${existingClasses.join(', ')}) under Block "${block}"!\n\nAuto-generation is blocked to prevent overwriting your existing data. Use "Step 3: Update Year Plan" to make updates.`);
+                    alert(`⚠️ A year plan has ALREADY been generated for ${subject} (${existingClasses.join(', ')}) under Block "${block}"!`);
                     return;
                 }
             }
@@ -609,103 +631,62 @@
             const defaultMonths = ['JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER', 'JANUARY', 'FEBRUARY', 'MARCH'];
 
             selectedClasses.forEach(grade => {
-                // 1. ISAP / ISAP G & CHEMISTRY
                 if (isIsapBlock && isChemistry && ISAP_CHEMISTRY_PRESET[grade]) {
-                    const presetRows = ISAP_CHEMISTRY_PRESET[grade];
-                    presetRows.forEach(pRow => {
-                        newPlanRows.push({
-                            Block: block,
-                            Subject: subject,
-                            Class: grade,
-                            Month: pRow.Month,
-                            NCERT: pRow.NCERT,
-                            Assessments: pRow.Assessments,
-                            NEET: pRow.NEET,
-                            Sec1: pRow.Sec1 || "X",
-                            Sec2: pRow.Sec2 || "X",
-                            Sec3: pRow.Sec3 || "X",
-                            Sec4: pRow.Sec4 || "X",
-                            Sec5: pRow.Sec5 || "X",
-                            Sec6: pRow.Sec6 || "X",
-                            Status: pRow.Status
-                        });
+                    ISAP_CHEMISTRY_PRESET[grade].forEach(pRow => {
+                        newPlanRows.push({ Block: block, Subject: subject, Class: grade, Month: pRow.Month, NCERT: pRow.NCERT, Assessments: pRow.Assessments, NEET: pRow.NEET, Sec1: pRow.Sec1 || "X", Sec2: pRow.Sec2 || "X", Sec3: pRow.Sec3 || "X", Sec4: pRow.Sec4 || "X", Sec5: pRow.Sec5 || "X", Sec6: pRow.Sec6 || "X", Status: pRow.Status });
                     });
-                }
-                // 2. STANDARD SUBJECT MATCH (including CHEMISTRY for non-ISAP blocks)
-                else if (PRESET_SYLLABUS[subject] && PRESET_SYLLABUS[subject][grade]) {
-                    const presetRows = PRESET_SYLLABUS[subject][grade];
-                    presetRows.forEach(pRow => {
-                        newPlanRows.push({
-                            Block: block,
-                            Subject: subject,
-                            Class: grade,
-                            Month: pRow.Month,
-                            NCERT: pRow.NCERT,
-                            Assessments: pRow.Assessments,
-                            NEET: pRow.NEET,
-                            Sec1: pRow.Sec1 || "X",
-                            Sec2: pRow.Sec2 || "X",
-                            Sec3: pRow.Sec3 || "X",
-                            Sec4: pRow.Sec4 || "X",
-                            Sec5: pRow.Sec5 || "X",
-                            Sec6: pRow.Sec6 || "X",
-                            Status: pRow.Status
-                        });
+                } else if (PRESET_SYLLABUS[subject] && PRESET_SYLLABUS[subject][grade]) {
+                    PRESET_SYLLABUS[subject][grade].forEach(pRow => {
+                        newPlanRows.push({ Block: block, Subject: subject, Class: grade, Month: pRow.Month, NCERT: pRow.NCERT, Assessments: pRow.Assessments, NEET: pRow.NEET, Sec1: pRow.Sec1 || "X", Sec2: pRow.Sec2 || "X", Sec3: pRow.Sec3 || "X", Sec4: pRow.Sec4 || "X", Sec5: pRow.Sec5 || "X", Sec6: pRow.Sec6 || "X", Status: pRow.Status });
                     });
-                } 
-                // 3. FALLBACK DEFAULT MONTHS
-                else {
+                } else {
                     defaultMonths.forEach(month => {
-                        newPlanRows.push({
-                            Block: block,
-                            Subject: subject,
-                            Class: grade,
-                            Month: month,
-                            NCERT: "",
-                            Assessments: "",
-                            NEET: (grade === 'Grade 9' || grade === 'Grade 10') ? "NEET Topic" : "N/A",
-                            Sec1: "X",
-                            Sec2: "X",
-                            Sec3: "X",
-                            Sec4: "X",
-                            Sec5: "X",
-                            Sec6: "X",
-                            Status: "NOT STARTED"
-                        });
+                        newPlanRows.push({ Block: block, Subject: subject, Class: grade, Month: month, NCERT: "", Assessments: "", NEET: (grade === 'Grade 9' || grade === 'Grade 10') ? "NEET Topic" : "N/A", Sec1: "X", Sec2: "X", Sec3: "X", Sec4: "X", Sec5: "X", Sec6: "X", Status: "NOT STARTED" });
                     });
                 }
             });
 
-            if (tIdx === -1) {
-                const assignmentData = [{ block: block, subject: subject, classes: selectedClasses }];
-                allTeachers.push({ name: teacherName, assignments: assignmentData, plan: newPlanRows });
-            } else {
-                allTeachers[tIdx].plan = allTeachers[tIdx].plan || [];
-                allTeachers[tIdx].plan.push(...newPlanRows);
-                
-                const assignExists = allTeachers[tIdx].assignments.some(a => a.block === block && a.subject === subject);
-                if (!assignExists) {
-                    allTeachers[tIdx].assignments.push({ block: block, subject: subject, classes: selectedClasses });
-                }
+            let updatedAssignments = teacher ? [...(teacher.assignments || [])] : [];
+            const assignExists = updatedAssignments.some(a => a.block === block && a.subject === subject);
+            if (!assignExists) {
+                updatedAssignments.push({ block: block, subject: subject, classes: selectedClasses });
             }
 
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(allTeachers));
-            populateTeacherDropdowns(true);
+            let updatedPlan = teacher ? [...(teacher.plan || []), ...newPlanRows] : newPlanRows;
 
-            alert(`✅ Preset File Plan for ${subject} (${selectedClasses.join(', ')}) attached successfully to ${teacherName}'s profile!`);
+            const payload = { name: teacherName, assignments: updatedAssignments, plan: updatedPlan };
+
+            try {
+                const response = await fetch(API_BASE, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (response.ok) {
+                    await fetchAllTeachersFromDB();
+                    populateTeacherDropdowns(true);
+                    alert(`✅ Preset File Plan for ${subject} attached successfully to database!`);
+                } else {
+                    const errText = await response.text();
+                    alert(`❌ Failed to save auto-generated plan: ${errText}`);
+                }
+            } catch (err) {
+                alert(`❌ Network connection error: ${err.message}`);
+            }
         }
 
-        function renderTeachersManagement() {
+        async function renderTeachersManagement() {
             const listDiv = document.getElementById('teachersManagementList');
             if(!listDiv) return;
             
-            const allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-            if(allTeachers.length === 0) {
+            await fetchAllTeachersFromDB();
+            if(globalTeachersCache.length === 0) {
                 listDiv.innerHTML = '<div class="col-span-full text-center py-6 bg-slate-50 border border-dashed rounded-xl font-medium text-slate-400 text-sm">No teacher profiles available inside database records.</div>';
                 return;
             }
 
-            listDiv.innerHTML = allTeachers.sort((a, b) => a.name.localeCompare(b.name)).map(t => {
+            listDiv.innerHTML = globalTeachersCache.sort((a, b) => a.name.localeCompare(b.name)).map(t => {
                 const totalWorkloads = t.assignments ? t.assignments.length : 0;
                 const totalPlans = t.plan ? t.plan.length : 0;
                 const safeName = t.name.replace(/'/g, "\\'");
@@ -728,9 +709,9 @@
             }).join('');
         }
 
-        function loadTeacherToEdit(name) {
-            const allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-            const teacher = allTeachers.find(t => t.name === name);
+        async function loadTeacherToEdit(name) {
+            await fetchAllTeachersFromDB();
+            const teacher = globalTeachersCache.find(t => t.name === name);
             if(!teacher) return;
 
             switchTab('register');
@@ -754,43 +735,25 @@
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
-        function deleteTeacherProfile(name) {
+        async function deleteTeacherProfile(name) {
             if(!confirm(`Are you sure you want to permanently delete ${name}?`)) return;
 
-            let allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-            allTeachers = allTeachers.filter(t => t.name !== name);
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(allTeachers));
-
-            renderTeachersManagement();
-            populateTeacherDropdowns(true);
-            resetRegistrationForm();
+            const response = await fetch(`${API_BASE}?name=${encodeURIComponent(name)}`, { method: 'DELETE' });
+            if (response.ok) {
+                await renderTeachersManagement();
+                await populateTeacherDropdowns(true);
+                resetRegistrationForm();
+            } else {
+                alert("❌ Failed to delete teacher profile from database.");
+            }
         }
 
-        function removeAllTeacherYearPlansAcrossAllBlocks() {
-            const selectedName = document.getElementById('dashboardTeacherSelect').value;
-            if (!selectedName) return alert("Please select a teacher first!");
-
-            if (!confirm(`Are you sure you want to remove ALL year plans across all blocks and grades for ${selectedName}?`)) return;
-
-            let allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-            let teacher = allTeachers.find(t => t.name === selectedName);
-            if (!teacher) return;
-
-            teacher.plan = [];
-            teacher.assignments = [];
-
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(allTeachers));
-            populateDashboardBlocks();
-            alert("🗑️ All year plans removed successfully across all blocks.");
-        }
-
-        function populateTeacherDropdowns(resetToDefault = false) {
-            const allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-            
+        async function populateTeacherDropdowns(resetToDefault = false) {
+            await fetchAllTeachersFromDB();
             const dashSelect = document.getElementById('dashboardTeacherSelect');
             const editSelect = document.getElementById('editTeacherSelect');
 
-            const teachersWithPlans = allTeachers
+            const teachersWithPlans = globalTeachersCache
                 .filter(t => t.plan && t.plan.length > 0)
                 .sort((a, b) => a.name.localeCompare(b.name));
 
@@ -820,12 +783,13 @@
             }
         }
 
-        function populateDashboardBlocks() {
+        async function populateDashboardBlocks() {
             const selectedName = document.getElementById('dashboardTeacherSelect').value;
             const blockSelect = document.getElementById('dashboardBlockSelect');
             const gradeSelect = document.getElementById('dashboardGradeSelect');
-            const allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-            const teacher = allTeachers.find(t => t.name === selectedName);
+            
+            await fetchAllTeachersFromDB();
+            const teacher = globalTeachersCache.find(t => t.name === selectedName);
 
             blockSelect.innerHTML = '<option value="All">All Blocks</option>';
             gradeSelect.innerHTML = '<option value="All">All Grades</option>';
@@ -851,9 +815,7 @@
             const selectedBlock = document.getElementById('dashboardBlockSelect').value; 
             const selectedGrade = document.getElementById('dashboardGradeSelect').value;
             
-            const allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-            const teacher = allTeachers.find(t => t.name === selectedName);
-
+            const teacher = globalTeachersCache.find(t => t.name === selectedName);
             if (!teacher) return;
 
             document.getElementById('teacher-dashboard-content').style.display = 'block';
@@ -895,7 +857,6 @@
 
             noPlanMsg.style.display = 'none';
             let pendingCount = 0, completedCount = 0;
-
             const safeTeacherName = teacher.name.replace(/'/g, "\\'");
 
             filteredPlan.forEach((lesson) => {
@@ -916,7 +877,7 @@
 
                     return `
                         <td class="py-2.5 px-2 min-w-[130px] border-r border-slate-200/40">
-                            <select onchange="updateInteractiveCell('${safeTeacherName}', ${lesson._originalIndex}, '${sec}', this.value); this.className='p-1.5 border rounded-lg w-full text-xs cursor-pointer shadow-sm ' + getSectionStyleClass(this.value);" class="p-1.5 border ${secStyleClass} rounded-lg w-full text-xs cursor-pointer shadow-sm">
+                            <select onchange="updateInteractiveCell('${safeTeacherName}', ${lesson._originalIndex}, '${sec}', this.value)" class="p-1.5 border ${secStyleClass} rounded-lg w-full text-xs cursor-pointer shadow-sm">
                                 <option value="X" ${secVal === 'X' ? 'selected' : ''}>X</option>
                                 <option value="NOT STARTED" ${secVal === 'NOT STARTED' ? 'selected' : ''}>NOT STARTED</option>
                                 <option value="IN PROGRESS" ${secVal === 'IN PROGRESS' ? 'selected' : ''}>IN PROGRESS</option>
@@ -951,13 +912,27 @@
             document.getElementById('stat-completed').innerText = completedCount;
         }
 
-        function updateInteractiveCell(teacherName, originalIndex, field, value) {
-            let allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-            let tIdx = allTeachers.findIndex(t => t.name === teacherName);
-            if (tIdx !== -1 && allTeachers[tIdx].plan && allTeachers[tIdx].plan[originalIndex]) {
-                allTeachers[tIdx].plan[originalIndex][field] = value;
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(allTeachers));
-                renderTeacherData(); 
+        async function updateInteractiveCell(teacherName, originalIndex, field, value) {
+            let teacher = globalTeachersCache.find(t => t.name === teacherName);
+            if (teacher && teacher.plan && teacher.plan[originalIndex]) {
+                teacher.plan[originalIndex][field] = value;
+
+                try {
+                    const response = await fetch(API_BASE, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(teacher)
+                    });
+
+                    if (response.ok) {
+                        await fetchAllTeachersFromDB();
+                        renderTeacherData(); 
+                    } else {
+                        alert("❌ Failed to update cell state in database.");
+                    }
+                } catch (err) {
+                    alert(`❌ Network error updating cell: ${err.message}`);
+                }
             }
         }
 
@@ -968,9 +943,7 @@
             
             if (!selectedName) return alert("Please select a teacher first to export data!");
 
-            const allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-            const teacher = allTeachers.find(t => t.name === selectedName);
-
+            const teacher = globalTeachersCache.find(t => t.name === selectedName);
             if (!teacher || !teacher.plan || teacher.plan.length === 0) return alert("No lesson plan data found to export.");
 
             let filteredPlan = teacher.plan;
@@ -1065,13 +1038,14 @@
             XLSX.writeFile(workbook, `${safeTeacherName}_${safeBlock}_${safeGrade}_Tracker.xlsx`);
         }
 
-        function populateEditBlocks() {
+        async function populateEditBlocks() {
             const teacherName = document.getElementById('editTeacherSelect').value;
             const blockSelect = document.getElementById('editBlockSelect');
             const subSelect = document.getElementById('editSubjectSelect');
             const gradeSelect = document.getElementById('editGradeSelect');
-            const allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-            const teacher = allTeachers.find(t => t.name === teacherName);
+            
+            await fetchAllTeachersFromDB();
+            const teacher = globalTeachersCache.find(t => t.name === teacherName);
             
             blockSelect.innerHTML = '<option value="" disabled selected>-- Choose a Block --</option>';
             subSelect.innerHTML = '<option value="" disabled selected>-- Choose Block First --</option>';
@@ -1090,8 +1064,7 @@
             const blockName = document.getElementById('editBlockSelect').value;
             const subSelect = document.getElementById('editSubjectSelect');
             const gradeSelect = document.getElementById('editGradeSelect');
-            const allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-            const teacher = allTeachers.find(t => t.name === teacherName);
+            const teacher = globalTeachersCache.find(t => t.name === teacherName);
             
             subSelect.innerHTML = '<option value="" disabled selected>-- Choose a Subject --</option>';
             gradeSelect.innerHTML = '<option value="" disabled selected>-- Choose Subject First --</option>';
@@ -1114,16 +1087,13 @@
             document.getElementById('existingPlanContainer').style.display = 'none';
             document.getElementById('noEditDataMsg').style.display = 'none';
             
-            const allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-            const teacher = allTeachers.find(t => t.name === teacherName);
-            
+            const teacher = globalTeachersCache.find(t => t.name === teacherName);
             if (!teacher || !teacher.plan || teacher.plan.length === 0) {
                 gradeSelect.innerHTML = '<option value="" disabled>No Generated Plans Found</option>';
                 return;
             }
             
             let foundGrades = new Set();
-
             teacher.plan.forEach(p => {
                 if (p.Block === blockName && p.Subject === subjectName) {
                     const classValue = p.Class || p.class;
@@ -1152,9 +1122,7 @@
             
             if (!teacherName || !blockName || !subjectName || !gradeName) return;
 
-            const allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-            const teacher = allTeachers.find(t => t.name === teacherName);
-
+            const teacher = globalTeachersCache.find(t => t.name === teacherName);
             if (!teacher || !teacher.plan) return showNoEditData();
 
             const planToEdit = teacher.plan.filter(p => 
@@ -1170,7 +1138,7 @@
             const getDropdown = (colName, selectedValue, index, options) => {
                 const val = selectedValue || 'X';
                 const styleClass = getSectionStyleClass(val);
-                return `<select data-col="${colName}" data-row="${index}" onchange="this.className='p-2 border rounded-lg w-full text-xs cursor-pointer shadow-sm ' + getSectionStyleClass(this.value);" class="p-2 border ${styleClass} rounded-lg w-full text-xs cursor-pointer shadow-sm">
+                return `<select data-col="${colName}" data-row="${index}" class="p-2 border ${styleClass} rounded-lg w-full text-xs cursor-pointer shadow-sm">
                     ${options.map(opt => `<option value="${opt}" ${val === opt ? 'selected' : ''}>${opt}</option>`).join('')}
                 </select>`;
             };
@@ -1194,7 +1162,7 @@
             document.getElementById('noEditDataMsg').style.display = 'block';
         }
 
-        function saveEditedPlan() {
+        async function saveEditedPlan() {
             const teacherName = document.getElementById('editTeacherSelect').value;
             const blockName = document.getElementById('editBlockSelect').value;
             const subjectName = document.getElementById('editSubjectSelect').value;
@@ -1205,7 +1173,7 @@
             
             tableRows.forEach(row => {
                 if (!row.querySelector('[data-col="Month"]')) return;
-                const rowData = {
+                updatedRows.push({
                     Block: blockName, Subject: subjectName, Class: gradeName, 
                     Month: row.querySelector('[data-col="Month"]').value,
                     NCERT: row.querySelector('[data-col="NCERT"]').value,
@@ -1218,26 +1186,37 @@
                     Sec5: row.querySelector('[data-col="Sec5"]').value,
                     Sec6: row.querySelector('[data-col="Sec6"]').value,
                     Status: row.querySelector('[data-col="Status"]').value
-                };
-                updatedRows.push(rowData);
+                });
             });
 
-            let allTeachers = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-            let tIdx = allTeachers.findIndex(t => t.name === teacherName);
-            
-            if (tIdx !== -1) {
-                let otherPlans = allTeachers[tIdx].plan.filter(p => 
+            let teacher = globalTeachersCache.find(t => t.name === teacherName);
+            if (teacher) {
+                let otherPlans = teacher.plan.filter(p => 
                     !(p.Block === blockName && p.Subject === subjectName && (p.Class || p.class) === gradeName)
                 );
-                allTeachers[tIdx].plan = [...otherPlans, ...updatedRows];
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(allTeachers));
-                
-                populateTeacherDropdowns(true);
-                populateEditBlocks();
+                teacher.plan = [...otherPlans, ...updatedRows];
 
-                const msg = document.getElementById('editSuccessMsg');
-                msg.classList.remove('hidden');
-                setTimeout(() => { msg.classList.add('hidden'); }, 3000);
+                try {
+                    const response = await fetch(API_BASE, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(teacher)
+                    });
+
+                    if (response.ok) {
+                        await fetchAllTeachersFromDB();
+                        populateTeacherDropdowns(true);
+                        populateEditBlocks();
+
+                        const msg = document.getElementById('editSuccessMsg');
+                        msg.classList.remove('hidden');
+                        setTimeout(() => { msg.classList.add('hidden'); }, 3000);
+                    } else {
+                        alert("❌ Failed to update records in database.");
+                    }
+                } catch (err) {
+                    alert(`❌ Network error saving plan edits: ${err.message}`);
+                }
             }
         }
     </script>
