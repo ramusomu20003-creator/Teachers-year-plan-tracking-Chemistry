@@ -686,7 +686,6 @@
 
                 if (response.ok) {
                     await fetchAllTeachersFromDB();
-                    populateTeacherDropdowns(true);
                     alert(`✅ Preset File Plan for ${subject} attached successfully to database!`);
                 } else {
                     const errText = await response.text();
