@@ -208,7 +208,7 @@
             </div>
             
             <div class="bg-purple-50 p-4 rounded-xl border border-purple-100 mb-6 text-sm text-purple-800 font-medium">
-                <strong>Instructions:</strong> Select cluster details to modify row parameters and save updates directly to MongoDB.
+                <strong>Instructions:</strong> Select cluster details to modify row parameters and save updates directly to MongoDB Atlas.
             </div>
             <div class="space-y-6 bg-slate-50/50 p-6 rounded-2xl border border-slate-200 shadow-sm">
                 <div class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
@@ -285,7 +285,6 @@
 
     <script>
         const API_BASE = '/api/teachers';
-            
         let globalTeachersCache = [];
 
         const USER_CREDENTIALS = {
@@ -387,10 +386,11 @@
                 const res = await fetch(API_BASE);
                 if (res.ok) {
                     const data = await res.json();
+                    console.log("Fetched Teachers Raw Data:", data);
                     globalTeachersCache = data.map(t => ({
                         ...t,
-                        name: t.name || t.Name || t.teacherName,
-                        assignments: (t.assignments || t.Workloads || []).map(a => ({
+                        name: t.name || t.Name || t.teacherName || t.teacher || "Unknown Teacher",
+                        assignments: (t.assignments || t.Workloads || t.workloads || []).map(a => ({
                             block: a.block || a.Block,
                             subject: a.subject || a.Subject,
                             classes: a.classes || a.Classes || []
@@ -496,7 +496,7 @@
                 populateDashboardBlocks();
             }
             if (tab === 'teacherEdit') {
-                await populateEditTeacherDropdown(); // Guaranteed invocation on tab switch
+                await populateEditTeacherDropdown();
             }
             if (tab === 'manageTeachers') {
                 renderTeachersManagement();
