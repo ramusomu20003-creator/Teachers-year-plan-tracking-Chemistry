@@ -387,7 +387,22 @@
             try {
                 const res = await fetch(API_BASE);
                 if (res.ok) {
-                    globalTeachersCache = await res.json();
+                    const data = await res.json();
+                    // Normalize keys to support uppercase/lowercase variations from MongoDB schemas
+                    globalTeachersCache = data.map(t => ({
+                        ...t,
+                        assignments: (t.assignments || t.Workloads || []).map(a => ({
+                            block: a.block || a.Block,
+                            subject: a.subject || a.Subject,
+                            classes: a.classes || a.Classes || []
+                        })),
+                        plan: (t.plan || t.Plan || []).map(p => ({
+                            ...p,
+                            Block: p.Block || p.block,
+                            Subject: p.Subject || p.subject,
+                            Class: p.Class || p.class
+                        }))
+                    }));
                 } else {
                     console.error("Server response error:", res.statusText);
                 }
@@ -614,7 +629,7 @@
 
             if (teacher && teacher.plan && teacher.plan.length > 0) {
                 const existingClasses = selectedClasses.filter(grade => 
-                    teacher.plan.some(p => p.Block === block && p.Subject === subject && (p.Class || p.class) === grade)
+                    teacher.plan.some(p => (p.Block || p.block) === block && (p.Subject || p.subject) === subject && (p.Class || p.class) === grade)
                 );
 
                 if (existingClasses.length > 0) {
@@ -646,7 +661,7 @@
             });
 
             let updatedAssignments = teacher ? [...(teacher.assignments || [])] : [];
-            const assignExists = updatedAssignments.some(a => a.block === block && a.subject === subject);
+            const assignExists = updatedAssignments.some(a => (a.block || a.Block) === block && (a.subject || a.Subject) === subject);
             if (!assignExists) {
                 updatedAssignments.push({ block: block, subject: subject, classes: selectedClasses });
             }
@@ -721,7 +736,7 @@
 
             if (teacher.assignments && teacher.assignments.length > 0) {
                 teacher.assignments.forEach(assign => {
-                    addAssignmentRow(assign.block, assign.subject, assign.classes);
+                    addAssignmentRow(assign.block || assign.Block, assign.subject || assign.Subject, assign.classes || assign.Classes || []);
                 });
             } else {
                 addAssignmentRow();
@@ -752,7 +767,6 @@
             const dashSelect = document.getElementById('dashboardTeacherSelect');
             const editSelect = document.getElementById('editTeacherSelect');
 
-            // FIX: Removed restriction filtering out teachers without plans so ALL registered teachers appear immediately
             const sortedTeachers = [...globalTeachersCache].sort((a, b) => a.name.localeCompare(b.name));
 
             let optionsHTML = '<option value="" disabled selected>-- Choose a Teacher --</option>';
@@ -794,7 +808,7 @@
 
             if (teacher) {
                 if (teacher.assignments) {
-                    const blocks = [...new Set(teacher.assignments.map(a => a.block))];
+                    const blocks = [...new Set(teacher.assignments.map(a => a.block || a.Block))];
                     blocks.sort().forEach(blk => blockSelect.innerHTML += `<option value="${blk}">${blk}</option>`);
                 }
                 if (teacher.plan && teacher.plan.length > 0) {
@@ -820,15 +834,15 @@
             document.getElementById('noDataMsg').style.display = 'none';
 
             let filteredAssignments = teacher.assignments || [];
-            if(selectedBlock !== "All") filteredAssignments = filteredAssignments.filter(a => a.block === selectedBlock);
+            if(selectedBlock !== "All") filteredAssignments = filteredAssignments.filter(a => (a.block || a.Block) === selectedBlock);
 
             const workloadDiv = document.getElementById('workloadDisplay');
             if (filteredAssignments.length > 0) {
                 workloadDiv.innerHTML = filteredAssignments.map(assign => `
                     <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-blue-600 flex flex-col border border-slate-100 hover:shadow-md transition">
-                        <span class="font-extrabold text-slate-800 text-lg">${assign.subject}</span>
-                        <span class="text-xs text-blue-600 font-bold mb-1 tracking-wider uppercase">Block: ${assign.block}</span>
-                        <span class="text-xs font-semibold text-slate-500 bg-slate-50 p-1.5 rounded-md border border-slate-100 mt-1">${assign.classes.join(', ')}</span>
+                        <span class="font-extrabold text-slate-800 text-lg">${assign.subject || assign.Subject}</span>
+                        <span class="text-xs text-blue-600 font-bold mb-1 tracking-wider uppercase">Block: ${assign.block || assign.Block}</span>
+                        <span class="text-xs font-semibold text-slate-500 bg-slate-50 p-1.5 rounded-md border border-slate-100 mt-1">${(assign.classes || assign.Classes || []).join(', ')}</span>
                     </div>
                 `).join('');
             } else {
@@ -842,7 +856,7 @@
             let allPlanData = (teacher.plan || []).map((lesson, idx) => ({ ...lesson, _originalIndex: idx }));
             let filteredPlan = allPlanData;
             
-            if(selectedBlock !== "All") filteredPlan = filteredPlan.filter(lesson => lesson.Block === selectedBlock);
+            if(selectedBlock !== "All") filteredPlan = filteredPlan.filter(lesson => (lesson.Block || lesson.block) === selectedBlock);
             if(selectedGrade !== "All") filteredPlan = filteredPlan.filter(lesson => (lesson.Class || lesson.class) === selectedGrade);
 
             if(filteredPlan.length === 0) {
@@ -886,13 +900,13 @@
                 }).join('');
 
                 row.innerHTML = `
-                    <td class="py-4 px-5 font-bold text-indigo-950 bg-white/40 min-w-[100px] border-r border-slate-200/40">${lesson.Block || 'N/A'}</td>
-                    <td class="py-4 px-5 font-bold text-blue-900 bg-white/40 min-w-[120px] border-r border-slate-200/40">${lesson.Subject || 'N/A'}</td>
+                    <td class="py-4 px-5 font-bold text-indigo-950 bg-white/40 min-w-[100px] border-r border-slate-200/40">${lesson.Block || lesson.block || 'N/A'}</td>
+                    <td class="py-4 px-5 font-bold text-blue-900 bg-white/40 min-w-[120px] border-r border-slate-200/40">${lesson.Subject || lesson.subject || 'N/A'}</td>
                     <td class="py-4 px-5 font-black text-slate-700 min-w-[110px] border-r border-slate-200/40">${lesson.Class || lesson.class || 'N/A'}</td>
-                    <td class="py-4 px-5 font-semibold text-slate-600 min-w-[100px] border-r border-slate-200/40">${lesson.Month || ''}</td>
-                    <td class="py-4 px-6 text-slate-900 font-semibold min-w-[240px] border-r border-slate-200/40">${lesson.NCERT || ''}</td>
-                    <td class="py-4 px-6 text-slate-600 text-xs min-w-[240px] border-r border-slate-200/40">${lesson.Assessments || ''}</td>
-                    <td class="py-4 px-6 text-slate-600 text-xs min-w-[240px] border-r border-slate-200/40">${lesson.NEET || ''}</td>
+                    <td class="py-4 px-5 font-semibold text-slate-600 min-w-[100px] border-r border-slate-200/40">${lesson.Month || lesson.month || ''}</td>
+                    <td class="py-4 px-6 text-slate-900 font-semibold min-w-[240px] border-r border-slate-200/40">${lesson.NCERT || lesson.ncert || ''}</td>
+                    <td class="py-4 px-6 text-slate-600 text-xs min-w-[240px] border-r border-slate-200/40">${lesson.Assessments || lesson.assessments || ''}</td>
+                    <td class="py-4 px-6 text-slate-600 text-xs min-w-[240px] border-r border-slate-200/40">${lesson.NEET || lesson.neet || ''}</td>
                     ${sectionSelectsHTML}
                     <td class="py-4 px-6 min-w-[155px]">
                         <select onchange="updateInteractiveCell('${safeTeacherName}', ${lesson._originalIndex}, 'Status', this.value)" class="p-2 border ${cellSelectBg} rounded-xl font-extrabold cursor-pointer w-full bg-white text-slate-800 text-xs">
@@ -945,7 +959,7 @@
             if (!teacher || !teacher.plan || teacher.plan.length === 0) return alert("No lesson plan data found to export.");
 
             let filteredPlan = teacher.plan;
-            if (selectedBlock !== "All") filteredPlan = filteredPlan.filter(lesson => lesson.Block === selectedBlock);
+            if (selectedBlock !== "All") filteredPlan = filteredPlan.filter(lesson => (lesson.Block || lesson.block) === selectedBlock);
             if (selectedGrade !== "All") filteredPlan = filteredPlan.filter(lesson => (lesson.Class || lesson.class) === selectedGrade);
 
             if (filteredPlan.length === 0) return alert("No records match active filters.");
@@ -998,13 +1012,13 @@
             ];
 
             const excelRows = planData.map(lesson => ({
-                "Block": lesson.Block || 'N/A',
-                "Subject": lesson.Subject || 'N/A',
+                "Block": lesson.Block || lesson.block || 'N/A',
+                "Subject": lesson.Subject || lesson.subject || 'N/A',
                 "Class/Grade": lesson.Class || lesson.class || 'N/A',
-                "Month": lesson.Month || '',
-                "NCERT Syllabus": lesson.NCERT || '',
-                "Assessments": lesson.Assessments || '',
-                "NEET Syllabus": lesson.NEET || '',
+                "Month": lesson.Month || lesson.month || '',
+                "NCERT Syllabus": lesson.NCERT || lesson.ncert || '',
+                "Assessments": lesson.Assessments || lesson.assessments || '',
+                "NEET Syllabus": lesson.NEET || lesson.neet || '',
                 "Sec-1": lesson.Sec1 || 'X',
                 "Sec-2": lesson.Sec2 || 'X',
                 "Sec-3": lesson.Sec3 || 'X',
@@ -1052,11 +1066,10 @@
             document.getElementById('noEditDataMsg').style.display = 'none';
             
             if (teacher && teacher.plan && teacher.plan.length > 0) {
-                const blocks = [...new Set(teacher.plan.map(p => p.Block).filter(Boolean))];
+                const blocks = [...new Set(teacher.plan.map(p => p.Block || p.block).filter(Boolean))];
                 blocks.sort().forEach(blk => blockSelect.innerHTML += `<option value="${blk}">${blk}</option>`);
             } else if (teacher && teacher.assignments && teacher.assignments.length > 0) {
-                // Fallback to assignments blocks if plan hasn't been generated yet
-                const blocks = [...new Set(teacher.assignments.map(a => a.block).filter(Boolean))];
+                const blocks = [...new Set(teacher.assignments.map(a => a.block || a.Block).filter(Boolean))];
                 blocks.sort().forEach(blk => blockSelect.innerHTML += `<option value="${blk}">${blk}</option>`);
             }
         }
@@ -1076,10 +1089,10 @@
             if (teacher) {
                 let subjects = [];
                 if (teacher.plan && teacher.plan.length > 0) {
-                    subjects = [...new Set(teacher.plan.filter(p => p.Block === blockName).map(p => p.Subject).filter(Boolean))];
+                    subjects = [...new Set(teacher.plan.filter(p => (p.Block || p.block) === blockName).map(p => p.Subject || p.subject).filter(Boolean))];
                 }
                 if (subjects.length === 0 && teacher.assignments) {
-                    subjects = [...new Set(teacher.assignments.filter(a => a.block === blockName).map(a => a.subject).filter(Boolean))];
+                    subjects = [...new Set(teacher.assignments.filter(a => (a.block || a.Block) === blockName).map(a => a.subject || a.Subject).filter(Boolean))];
                 }
                 subjects.sort().forEach(sub => subSelect.innerHTML += `<option value="${sub}">${sub}</option>`);
             }
@@ -1104,7 +1117,7 @@
             let foundGrades = new Set();
             if (teacher.plan && teacher.plan.length > 0) {
                 teacher.plan.forEach(p => {
-                    if (p.Block === blockName && p.Subject === subjectName) {
+                    if ((p.Block || p.block) === blockName && (p.Subject || p.subject) === subjectName) {
                         const classValue = p.Class || p.class;
                         if (Array.isArray(classValue)) classValue.forEach(c => foundGrades.add(c));
                         else if (classValue) foundGrades.add(classValue);
@@ -1113,8 +1126,8 @@
             }
             if (foundGrades.size === 0 && teacher.assignments) {
                 teacher.assignments.forEach(a => {
-                    if (a.block === blockName && a.subject === subjectName && a.classes) {
-                        a.classes.forEach(c => foundGrades.add(c));
+                    if ((a.block || a.Block) === blockName && (a.subject || a.Subject) === subjectName && (a.classes || a.Classes)) {
+                        (a.classes || a.Classes).forEach(c => foundGrades.add(c));
                     }
                 });
             }
@@ -1143,10 +1156,9 @@
             if (!teacher) return showNoEditData();
 
             let planToEdit = teacher.plan ? teacher.plan.filter(p => 
-                p.Block === blockName && p.Subject === subjectName && (p.Class || p.class) === gradeName
+                (p.Block || p.block) === blockName && (p.Subject || p.subject) === subjectName && (p.Class || p.class) === gradeName
             ) : [];
 
-            // If no plan rows exist yet for this assignment, generate temporary edit rows dynamically
             if (planToEdit.length === 0) {
                 planToEdit = ['JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER'].map(month => ({
                     Block: blockName, Subject: subjectName, Class: gradeName, Month: month,
@@ -1168,14 +1180,14 @@
 
             tbody.innerHTML = planToEdit.map((row, index) => `
                 <tr class="hover:bg-slate-50 border-b border-slate-200/60">
-                    <td class="p-2 min-w-[120px] border-r border-slate-100"><input type="text" data-col="Month" data-row="${index}" value="${row.Month || ''}" class="w-full p-2 border border-slate-200 rounded-lg text-sm font-semibold bg-white"></td>
-                    <td class="p-2 min-w-[220px] border-r border-slate-100"><input type="text" data-col="NCERT" data-row="${index}" value="${row.NCERT || ''}" class="w-full p-2 border border-slate-200 rounded-lg text-sm text-slate-700 bg-white"></td>
-                    <td class="p-2 min-w-[220px] border-r border-slate-100"><input type="text" data-col="Assessments" data-row="${index}" value="${row.Assessments || ''}" class="w-full p-2 border border-slate-200 rounded-lg text-xs text-slate-500 bg-white"></td>
-                    <td class="p-2 min-w-[220px] border-r border-slate-100"><input type="text" data-col="NEET" data-row="${index}" value="${row.NEET || ''}" class="w-full p-2 border border-slate-200 rounded-lg text-xs text-slate-500 bg-white"></td>
+                    <td class="p-2 min-w-[120px] border-r border-slate-100"><input type="text" data-col="Month" data-row="${index}" value="${row.Month || row.month || ''}" class="w-full p-2 border border-slate-200 rounded-lg text-sm font-semibold bg-white"></td>
+                    <td class="p-2 min-w-[220px] border-r border-slate-100"><input type="text" data-col="NCERT" data-row="${index}" value="${row.NCERT || row.ncert || ''}" class="w-full p-2 border border-slate-200 rounded-lg text-sm text-slate-700 bg-white"></td>
+                    <td class="p-2 min-w-[220px] border-r border-slate-100"><input type="text" data-col="Assessments" data-row="${index}" value="${row.Assessments || row.assessments || ''}" class="w-full p-2 border border-slate-200 rounded-lg text-xs text-slate-500 bg-white"></td>
+                    <td class="p-2 min-w-[220px] border-r border-slate-100"><input type="text" data-col="NEET" data-row="${index}" value="${row.NEET || row.neet || ''}" class="w-full p-2 border border-slate-200 rounded-lg text-xs text-slate-500 bg-white"></td>
                     ${['Sec1', 'Sec2', 'Sec3', 'Sec4', 'Sec5', 'Sec6'].map(sec => `
                         <td class="p-2 min-w-[125px] border-r border-slate-100">${getDropdown(sec, row[sec] || 'X', index, ['X', 'NOT STARTED', 'IN PROGRESS', 'COMPLETED'])}</td>
                     `).join('')}
-                    <td class="p-2 min-w-[140px]">${getDropdown('Status', row.Status || 'NOT STARTED', index, ['NOT STARTED', 'IN PROGRESS', 'COMPLETED'])}</td>
+                    <td class="p-2 min-w-[140px]">${getDropdown('Status', row.Status || row.status || 'NOT STARTED', index, ['NOT STARTED', 'IN PROGRESS', 'COMPLETED'])}</td>
                 </tr>
             `).join('');
         }
@@ -1215,7 +1227,7 @@
             let teacher = globalTeachersCache.find(t => t.name === teacherName);
             if (teacher) {
                 let otherPlans = teacher.plan ? teacher.plan.filter(p => 
-                    !(p.Block === blockName && p.Subject === subjectName && (p.Class || p.class) === gradeName)
+                    !((p.Block || p.block) === blockName && (p.Subject || p.subject) === subjectName && (p.Class || p.class) === gradeName)
                 ) : [];
                 teacher.plan = [...otherPlans, ...updatedRows];
 
