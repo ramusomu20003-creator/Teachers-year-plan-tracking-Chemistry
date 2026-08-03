@@ -218,11 +218,15 @@
                     </div>
                     <div>
                         <label class="block font-bold mb-2 text-slate-700 text-sm">Select Block</label>
-                        <select id="editBlockSelect" onchange="populateEditSubjects()" class="w-full border border-slate-300 p-3 rounded-xl focus:ring-2 focus:ring-purple-500 bg-white shadow-sm transition font-semibold text-sm"></select>
+                        <select id="editBlockSelect" onchange="populateEditSubjects()" class="w-full border border-slate-300 p-3 rounded-xl focus:ring-2 focus:ring-purple-500 bg-white shadow-sm transition font-semibold text-sm">
+                            <option value="" disabled selected>-- Choose Teacher First --</option>
+                        </select>
                     </div>
                     <div>
                         <label class="block font-bold mb-2 text-slate-700 text-sm">Select Subject</label>
-                        <select id="editSubjectSelect" onchange="populateEditGrades()" class="w-full border border-slate-300 p-3 rounded-xl focus:ring-2 focus:ring-purple-500 bg-white shadow-sm transition font-semibold text-sm"></select>
+                        <select id="editSubjectSelect" onchange="populateEditGrades()" class="w-full border border-slate-300 p-3 rounded-xl focus:ring-2 focus:ring-purple-500 bg-white shadow-sm transition font-semibold text-sm">
+                            <option value="" disabled selected>-- Choose Block First --</option>
+                        </select>
                     </div>
                     <div>
                         <label class="block font-bold mb-2 text-slate-700 text-sm">Select Grade</label>
@@ -382,7 +386,7 @@
         // Direct MongoDB Atlas API Sync Functions
         async function loadDataFromDB() {
             try {
-                const response = await fetch('/api/data');
+                const response = await fetch('/api/data', { cache: 'no-store' });
                 if (response.ok) {
                     const teachers = await response.json();
                     return teachers || [];
@@ -586,7 +590,7 @@
             const existingProfile = allTeachers.find(t => t.name.toLowerCase() === name.toLowerCase());
             let activePlans = existingProfile ? (existingProfile.plan || []) : [];
 
-            // Automatically generate or append syllabus plan rows for every selected assignment
+            // Automatically generate or append syllabus plan rows so Update Year Plan works instantly
             assignmentsArray.forEach(assign => {
                 const block = assign.block;
                 const subject = assign.subject;
@@ -720,19 +724,19 @@
             const dashSelect = document.getElementById('dashboardTeacherSelect');
             const editSelect = document.getElementById('editTeacherSelect');
 
-            const teachersWithPlans = allTeachers
-                .filter(t => t.plan && t.plan.length > 0)
-                .sort((a, b) => a.name.localeCompare(b.name));
+            // Show any registered teacher who has assignments or plans
+            const validTeachers = allTeachers.filter(t => (t.plan && t.plan.length > 0) || (t.assignments && t.assignments.length > 0));
+            validTeachers.sort((a, b) => a.name.localeCompare(b.name));
 
             let optionsHTML = '<option value="" disabled selected>-- Choose a Teacher --</option>';
-            teachersWithPlans.forEach(t => {
+            validTeachers.forEach(t => {
                 optionsHTML += `<option value="${t.name}">${t.name}</option>`;
             });
 
             if (dashSelect) {
                 const currentDash = dashSelect.value;
                 dashSelect.innerHTML = optionsHTML;
-                if (!resetToDefault && currentDash && teachersWithPlans.find(t => t.name === currentDash)) {
+                if (!resetToDefault && currentDash && validTeachers.find(t => t.name === currentDash)) {
                     dashSelect.value = currentDash;
                 } else {
                     dashSelect.value = "";
@@ -742,7 +746,7 @@
             if (editSelect) {
                 const currentEdit = editSelect.value;
                 editSelect.innerHTML = optionsHTML;
-                if (!resetToDefault && currentEdit && teachersWithPlans.find(t => t.name === currentEdit)) {
+                if (!resetToDefault && currentEdit && validTeachers.find(t => t.name === currentEdit)) {
                     editSelect.value = currentEdit;
                 } else {
                     editSelect.value = "";
@@ -1009,9 +1013,20 @@
             document.getElementById('existingPlanContainer').style.display = 'none';
             document.getElementById('noEditDataMsg').style.display = 'none';
             
-            if (teacher && teacher.plan && teacher.plan.length > 0) {
-                const blocks = [...new Set(teacher.plan.map(p => p.Block).filter(Boolean))];
-                blocks.sort().forEach(blk => blockSelect.innerHTML += `<option value="${blk}">${blk}</option>`);
+            if (teacher) {
+                let availableBlocks = new Set();
+                if (teacher.plan && teacher.plan.length > 0) {
+                    teacher.plan.forEach(p => { if (p.Block) availableBlocks.add(p.Block); });
+                }
+                if (availableBlocks.size === 0 && teacher.assignments) {
+                    teacher.assignments.forEach(a => { if (a.block) availableBlocks.add(a.block); });
+                }
+                
+                if (availableBlocks.size > 0) {
+                    Array.from(availableBlocks).sort().forEach(blk => {
+                        blockSelect.innerHTML += `<option value="${blk}">${blk}</option>`;
+                    });
+                }
             }
         }
 
@@ -1028,9 +1043,20 @@
             document.getElementById('existingPlanContainer').style.display = 'none';
             document.getElementById('noEditDataMsg').style.display = 'none';
             
-            if (teacher && teacher.plan && blockName) {
-                const subjects = [...new Set(teacher.plan.filter(p => p.Block === blockName).map(p => p.Subject).filter(Boolean))];
-                subjects.sort().forEach(sub => subSelect.innerHTML += `<option value="${sub}">${sub}</option>`);
+            if (teacher && blockName) {
+                let availableSubjects = new Set();
+                if (teacher.plan && teacher.plan.length > 0) {
+                    teacher.plan.filter(p => p.Block === blockName).forEach(p => { if (p.Subject) availableSubjects.add(p.Subject); });
+                }
+                if (availableSubjects.size === 0 && teacher.assignments) {
+                    teacher.assignments.filter(a => a.block === blockName).forEach(a => { if (a.subject) availableSubjects.add(a.subject); });
+                }
+
+                if (availableSubjects.size > 0) {
+                    Array.from(availableSubjects).sort().forEach(sub => {
+                        subSelect.innerHTML += `<option value="${sub}">${sub}</option>`;
+                    });
+                }
             }
         }
 
@@ -1047,20 +1073,30 @@
             const allTeachers = await loadDataFromDB();
             const teacher = allTeachers.find(t => t.name === teacherName);
             
-            if (!teacher || !teacher.plan || teacher.plan.length === 0) {
+            if (!teacher) {
                 gradeSelect.innerHTML = '<option value="" disabled>No Generated Plans Found</option>';
                 return;
             }
             
             let foundGrades = new Set();
 
-            teacher.plan.forEach(p => {
-                if (p.Block === blockName && p.Subject === subjectName) {
-                    const classValue = p.Class || p.class;
-                    if (Array.isArray(classValue)) classValue.forEach(c => foundGrades.add(c));
-                    else if (classValue) foundGrades.add(classValue);
-                }
-            });
+            if (teacher.plan) {
+                teacher.plan.forEach(p => {
+                    if (p.Block === blockName && p.Subject === subjectName) {
+                        const classValue = p.Class || p.class;
+                        if (Array.isArray(classValue)) classValue.forEach(c => foundGrades.add(c));
+                        else if (classValue) foundGrades.add(classValue);
+                    }
+                });
+            }
+
+            if (foundGrades.size === 0 && teacher.assignments) {
+                teacher.assignments.forEach(a => {
+                    if (a.block === blockName && a.subject === subjectName && a.classes) {
+                        a.classes.forEach(c => foundGrades.add(c));
+                    }
+                });
+            }
 
             if (foundGrades.size > 0) {
                 Array.from(foundGrades).sort().forEach(grd => {
@@ -1082,14 +1118,32 @@
             
             if (!teacherName || !blockName || !subjectName || !gradeName) return;
 
-            const allTeachers = await loadDataFromDB();
-            const teacher = allTeachers.find(t => t.name === teacherName);
+            let allTeachers = await loadDataFromDB();
+            let teacher = allTeachers.find(t => t.name === teacherName);
 
-            if (!teacher || !teacher.plan) return showNoEditData();
+            if (!teacher) return showNoEditData();
 
-            const planToEdit = teacher.plan.filter(p => 
+            if (!teacher.plan) teacher.plan = [];
+            let planToEdit = teacher.plan.filter(p => 
                 p.Block === blockName && p.Subject === subjectName && (p.Class || p.class) === gradeName
             );
+
+            if (planToEdit.length === 0) {
+                const defaultMonths = ['JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER', 'JANUARY', 'FEBRUARY', 'MARCH'];
+                defaultMonths.forEach(month => {
+                    teacher.plan.push({
+                        Block: blockName, Subject: subjectName, Class: gradeName,
+                        Month: month, NCERT: "", Assessments: "",
+                        NEET: (gradeName === 'Grade 9' || gradeName === 'Grade 10') ? "NEET Topic" : "N/A",
+                        Sec1: "X", Sec2: "X", Sec3: "X", Sec4: "X", Sec5: "X", Sec6: "X",
+                        Status: "NOT STARTED"
+                    });
+                });
+                await saveDataToDB(allTeachers);
+                planToEdit = teacher.plan.filter(p => 
+                    p.Block === blockName && p.Subject === subjectName && (p.Class || p.class) === gradeName
+                );
+            }
 
             if (planToEdit.length === 0) return showNoEditData();
 
@@ -1156,7 +1210,7 @@
             let tIdx = allTeachers.findIndex(t => t.name === teacherName);
             
             if (tIdx !== -1) {
-                let otherPlans = allTeachers[tIdx].plan.filter(p => 
+                let otherPlans = (allTeachers[tIdx].plan || []).filter(p => 
                     !(p.Block === blockName && p.Subject === subjectName && (p.Class || p.class) === gradeName)
                 );
                 allTeachers[tIdx].plan = [...otherPlans, ...updatedRows];
