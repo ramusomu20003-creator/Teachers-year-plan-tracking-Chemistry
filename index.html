@@ -286,10 +286,8 @@
             
         let globalTeachersCache = [];
 
+        // ONLY admin_user remains
         const USER_CREDENTIALS = {
-            "dash_user": { pass: "dash123", tabs: ["dashboard"] },
-            "edit_user": { pass: "edit123", tabs: ["register", "teacherEdit"] },
-            "upload_user": { pass: "upload123", tabs: ["manageTeachers"] },
             "admin_user": { pass: "admin123", tabs: ["register", "teacherEdit", "manageTeachers", "dashboard"] }
         };
 
@@ -407,11 +405,7 @@
                     console.error("Server response error:", res.statusText);
                 }
             } catch (err) {
-                console.error("Failed to connect to backend server, falling back to localStorage if available.", err);
-                const localFallback = localStorage.getItem('montessoriMasterDB_V5');
-                if (localFallback) {
-                    globalTeachersCache = JSON.parse(localFallback);
-                }
+                console.error("Failed to connect to backend server:", err);
             }
             return globalTeachersCache;
         }
