@@ -388,7 +388,6 @@
                 const res = await fetch(API_BASE);
                 if (res.ok) {
                     const data = await res.json();
-                    // Normalize keys to support uppercase/lowercase variations from MongoDB schemas
                     globalTeachersCache = data.map(t => ({
                         ...t,
                         assignments: (t.assignments || t.Workloads || []).map(a => ({
@@ -1065,13 +1064,22 @@
             document.getElementById('existingPlanContainer').style.display = 'none';
             document.getElementById('noEditDataMsg').style.display = 'none';
             
-            if (teacher && teacher.plan && teacher.plan.length > 0) {
-                const blocks = [...new Set(teacher.plan.map(p => p.Block || p.block).filter(Boolean))];
-                blocks.sort().forEach(blk => blockSelect.innerHTML += `<option value="${blk}">${blk}</option>`);
-            } else if (teacher && teacher.assignments && teacher.assignments.length > 0) {
-                const blocks = [...new Set(teacher.assignments.map(a => a.block || a.Block).filter(Boolean))];
-                blocks.sort().forEach(blk => blockSelect.innerHTML += `<option value="${blk}">${blk}</option>`);
+            const allBlocks = ['ISAP', 'ISAP G', 'LB', 'CBT', 'LG', 'IT', 'IE', 'PRIMARY'];
+            let blocks = new Set();
+
+            if (teacher) {
+                if (teacher.plan && teacher.plan.length > 0) {
+                    teacher.plan.forEach(p => { if (p.Block || p.block) blocks.add(p.Block || p.block); });
+                }
+                if (blocks.size === 0 && teacher.assignments && teacher.assignments.length > 0) {
+                    teacher.assignments.forEach(a => { if (a.block || a.Block) blocks.add(a.block || a.Block); });
+                }
             }
+            if (blocks.size === 0) {
+                allBlocks.forEach(b => blocks.add(b));
+            }
+
+            Array.from(blocks).sort().forEach(blk => blockSelect.innerHTML += `<option value="${blk}">${blk}</option>`);
         }
 
         function populateEditSubjects() {
@@ -1086,16 +1094,22 @@
             document.getElementById('existingPlanContainer').style.display = 'none';
             document.getElementById('noEditDataMsg').style.display = 'none';
             
+            const allSubjects = ['TELUGU', 'ENGLISH', 'HINDI', 'MATHS', 'PHYSICS', 'CHEMISTRY', 'BIOLOGY', 'SOCIAL SCIENCE', 'COMPUTER'];
+            let subjects = new Set();
+
             if (teacher) {
-                let subjects = [];
                 if (teacher.plan && teacher.plan.length > 0) {
-                    subjects = [...new Set(teacher.plan.filter(p => (p.Block || p.block) === blockName).map(p => p.Subject || p.subject).filter(Boolean))];
+                    teacher.plan.filter(p => (p.Block || p.block) === blockName).forEach(p => { if (p.Subject || p.subject) subjects.add(p.Subject || p.subject); });
                 }
-                if (subjects.length === 0 && teacher.assignments) {
-                    subjects = [...new Set(teacher.assignments.filter(a => (a.block || a.Block) === blockName).map(a => a.subject || a.Subject).filter(Boolean))];
+                if (subjects.size === 0 && teacher.assignments) {
+                    teacher.assignments.filter(a => (a.block || a.Block) === blockName).forEach(a => { if (a.subject || a.Subject) subjects.add(a.subject || a.Subject); });
                 }
-                subjects.sort().forEach(sub => subSelect.innerHTML += `<option value="${sub}">${sub}</option>`);
             }
+            if (subjects.size === 0) {
+                allSubjects.forEach(s => subjects.add(s));
+            }
+
+            Array.from(subjects).sort().forEach(sub => subSelect.innerHTML += `<option value="${sub}">${sub}</option>`);
         }
 
         function populateEditGrades() {
@@ -1109,39 +1123,37 @@
             document.getElementById('noEditDataMsg').style.display = 'none';
             
             const teacher = globalTeachersCache.find(t => t.name === teacherName);
-            if (!teacher) {
-                gradeSelect.innerHTML = '<option value="" disabled>No Data Found</option>';
-                return;
-            }
-            
             let foundGrades = new Set();
-            if (teacher.plan && teacher.plan.length > 0) {
-                teacher.plan.forEach(p => {
-                    if ((p.Block || p.block) === blockName && (p.Subject || p.subject) === subjectName) {
-                        const classValue = p.Class || p.class;
-                        if (Array.isArray(classValue)) classValue.forEach(c => foundGrades.add(c));
-                        else if (classValue) foundGrades.add(classValue);
-                    }
-                });
-            }
-            if (foundGrades.size === 0 && teacher.assignments) {
-                teacher.assignments.forEach(a => {
-                    if ((a.block || a.Block) === blockName && (a.subject || a.Subject) === subjectName && (a.classes || a.Classes)) {
-                        (a.classes || a.Classes).forEach(c => foundGrades.add(c));
-                    }
-                });
+
+            if (teacher) {
+                if (teacher.plan && teacher.plan.length > 0) {
+                    teacher.plan.forEach(p => {
+                        if ((p.Block || p.block) === blockName && (p.Subject || p.subject) === subjectName) {
+                            const classValue = p.Class || p.class;
+                            if (Array.isArray(classValue)) classValue.forEach(c => foundGrades.add(c));
+                            else if (classValue) foundGrades.add(classValue);
+                        }
+                    });
+                }
+                if (foundGrades.size === 0 && teacher.assignments) {
+                    teacher.assignments.forEach(a => {
+                        if ((a.block || a.Block) === blockName && (a.subject || a.Subject) === subjectName && (a.classes || a.Classes)) {
+                            (a.classes || a.Classes).forEach(c => foundGrades.add(c));
+                        }
+                    });
+                }
             }
 
-            if (foundGrades.size > 0) {
-                Array.from(foundGrades).sort().forEach(grd => {
-                    const opt = document.createElement('option');
-                    opt.value = grd; 
-                    opt.textContent = grd;
-                    gradeSelect.appendChild(opt);
-                });
-            } else {
-                gradeSelect.innerHTML = '<option value="" disabled>No Generated Plans Found</option>';
+            if (foundGrades.size === 0) {
+                for (let i = 1; i <= 10; i++) foundGrades.add(`Grade ${i}`);
             }
+
+            Array.from(foundGrades).sort().forEach(grd => {
+                const opt = document.createElement('option');
+                opt.value = grd; 
+                opt.textContent = grd;
+                gradeSelect.appendChild(opt);
+            });
         }
 
         function loadPlanForEdit() {
@@ -1153,9 +1165,7 @@
             if (!teacherName || !blockName || !subjectName || !gradeName) return;
 
             const teacher = globalTeachersCache.find(t => t.name === teacherName);
-            if (!teacher) return showNoEditData();
-
-            let planToEdit = teacher.plan ? teacher.plan.filter(p => 
+            let planToEdit = teacher && teacher.plan ? teacher.plan.filter(p => 
                 (p.Block || p.block) === blockName && (p.Subject || p.subject) === subjectName && (p.Class || p.class) === gradeName
             ) : [];
 
@@ -1225,33 +1235,36 @@
             });
 
             let teacher = globalTeachersCache.find(t => t.name === teacherName);
-            if (teacher) {
-                let otherPlans = teacher.plan ? teacher.plan.filter(p => 
-                    !((p.Block || p.block) === blockName && (p.Subject || p.subject) === subjectName && (p.Class || p.class) === gradeName)
-                ) : [];
-                teacher.plan = [...otherPlans, ...updatedRows];
+            if (!teacher) {
+                teacher = { name: teacherName, assignments: [{ block: blockName, subject: subjectName, classes: [gradeName] }], plan: [] };
+                globalTeachersCache.push(teacher);
+            }
 
-                try {
-                    const response = await fetch(API_BASE, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(teacher)
-                    });
+            let otherPlans = teacher.plan ? teacher.plan.filter(p => 
+                !((p.Block || p.block) === blockName && (p.Subject || p.subject) === subjectName && (p.Class || p.class) === gradeName)
+            ) : [];
+            teacher.plan = [...otherPlans, ...updatedRows];
 
-                    if (response.ok) {
-                        await fetchAllTeachersFromDB();
-                        populateTeacherDropdowns(true);
-                        populateEditBlocks();
+            try {
+                const response = await fetch(API_BASE, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(teacher)
+                });
 
-                        const msg = document.getElementById('editSuccessMsg');
-                        msg.classList.remove('hidden');
-                        setTimeout(() => { msg.classList.add('hidden'); }, 3000);
-                    } else {
-                        alert("❌ Failed to update records in database.");
-                    }
-                } catch (err) {
-                    alert(`❌ Network error saving plan edits: ${err.message}`);
+                if (response.ok) {
+                    await fetchAllTeachersFromDB();
+                    populateTeacherDropdowns(true);
+                    populateEditBlocks();
+
+                    const msg = document.getElementById('editSuccessMsg');
+                    msg.classList.remove('hidden');
+                    setTimeout(() => { msg.classList.add('hidden'); }, 3000);
+                } else {
+                    alert("❌ Failed to update records in database.");
                 }
+            } catch (err) {
+                alert(`❌ Network error saving plan edits: ${err.message}`);
             }
         }
     </script>
